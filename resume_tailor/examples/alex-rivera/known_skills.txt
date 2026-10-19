@@ -1,0 +1,25 @@
+# Skills Alex can talk about in an interview that the base resume doesn't list. One per line.
+# Claude may add these to a tailored resume when the job asks for them; anything else counts as invented.
+Spark
+PySpark
+Databricks
+Snowflake
+Redshift
+Apache Kafka
+FastAPI
+REST APIs
+GCP
+BigQuery
+dbt
+Prometheus
+Grafana
+Datadog
+Jenkins
+Model Monitoring
+Feature Store
+Experiment Tracking
+MLOps
+Model Deployment
+GPU Training
+Statistics
+Recommendation Systems

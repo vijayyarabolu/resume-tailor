@@ -1,0 +1,369 @@
+{
+ "_about": "Skill names the keyword scorer recognises, by category. Each entry is canonical name -> other spellings. Add your own in <home>/lexicon.json with the same shape; it is merged over this file.",
+ "Languages": {
+  "Python": [],
+  "SQL": [],
+  "R": [],
+  "Java": [],
+  "Scala": [],
+  "Go": [
+   "Golang"
+  ],
+  "Rust": [],
+  "C++": [
+   "cpp"
+  ],
+  "C#": [],
+  "JavaScript": [
+   "JS"
+  ],
+  "TypeScript": [],
+  "Bash": [
+   "shell scripting"
+  ],
+  "Julia": [],
+  "Kotlin": [],
+  "Swift": [],
+  "Ruby": [],
+  "PHP": [],
+  "MATLAB": [],
+  "SAS": []
+ },
+ "ML & Data Science": {
+  "Machine Learning": [
+   "ML"
+  ],
+  "Statistics": [
+   "statistical modeling",
+   "statistical analysis"
+  ],
+  "A/B Testing": [
+   "A/B tests",
+   "AB testing",
+   "experimentation"
+  ],
+  "scikit-learn": [
+   "sklearn",
+   "scikit learn"
+  ],
+  "XGBoost": [],
+  "LightGBM": [],
+  "CatBoost": [],
+  "pandas": [],
+  "NumPy": [],
+  "SciPy": [],
+  "statsmodels": [],
+  "Feature Engineering": [],
+  "Time Series": [
+   "time-series",
+   "forecasting"
+  ],
+  "Recommendation Systems": [
+   "recommender systems",
+   "recommendations"
+  ],
+  "Causal Inference": [],
+  "Bayesian Methods": [
+   "Bayesian"
+  ],
+  "Regression": [
+   "linear regression",
+   "logistic regression"
+  ],
+  "Classification": [],
+  "Clustering": [],
+  "Anomaly Detection": [],
+  "Optimization": [],
+  "Jupyter": [
+   "Jupyter Notebook"
+  ]
+ },
+ "Deep Learning": {
+  "Deep Learning": [],
+  "PyTorch": [],
+  "TensorFlow": [],
+  "Keras": [],
+  "JAX": [],
+  "Computer Vision": [],
+  "NLP": [
+   "natural language processing"
+  ],
+  "Transformers": [
+   "transformer models"
+  ],
+  "CNN": [
+   "convolutional neural networks"
+  ],
+  "RNN": [
+   "LSTM"
+  ],
+  "OpenCV": [],
+  "GPU Training": [
+   "GPU training",
+   "CUDA"
+  ],
+  "Distributed Training": [],
+  "ONNX": []
+ },
+ "GenAI & Agentic AI": {
+  "Generative AI": [
+   "GenAI",
+   "Gen AI"
+  ],
+  "LLMs": [
+   "LLM",
+   "large language models"
+  ],
+  "RAG": [
+   "retrieval-augmented generation",
+   "retrieval augmented generation"
+  ],
+  "AI Agents": [
+   "agentic AI",
+   "agentic workflows",
+   "LLM agents",
+   "AI agent"
+  ],
+  "LangChain": [],
+  "LangGraph": [],
+  "LlamaIndex": [],
+  "Prompt Engineering": [],
+  "MCP": [
+   "Model Context Protocol"
+  ],
+  "Claude": [
+   "Anthropic Claude"
+  ],
+  "OpenAI API": [
+   "GPT-4",
+   "GPT"
+  ],
+  "Semantic Kernel": [],
+  "Guardrails": [],
+  "LLM Evaluation": [
+   "evals",
+   "LLM evals"
+  ],
+  "Embeddings": []
+ },
+ "LLM & Fine-tuning": {
+  "Fine-tuning": [
+   "fine tuning",
+   "finetuning"
+  ],
+  "LoRA": [
+   "QLoRA"
+  ],
+  "Hugging Face": [
+   "HuggingFace"
+  ],
+  "vLLM": [],
+  "RLHF": [],
+  "Quantization": [],
+  "Model Distillation": [
+   "distillation"
+  ]
+ },
+ "Vector Search": {
+  "Vector Databases": [
+   "vector database",
+   "vector DB",
+   "vector store"
+  ],
+  "Pinecone": [],
+  "Weaviate": [],
+  "Chroma": [
+   "ChromaDB"
+  ],
+  "Milvus": [],
+  "FAISS": [],
+  "Qdrant": [],
+  "pgvector": [],
+  "OpenSearch": [],
+  "Semantic Search": []
+ },
+ "Data Engineering": {
+  "Apache Spark": [
+   "Spark"
+  ],
+  "PySpark": [],
+  "Apache Kafka": [
+   "Kafka"
+  ],
+  "Apache Airflow": [
+   "Airflow"
+  ],
+  "dbt": [],
+  "ETL": [
+   "ELT",
+   "ETL pipelines"
+  ],
+  "Data Pipelines": [
+   "data pipeline"
+  ],
+  "Databricks": [],
+  "Snowflake": [],
+  "BigQuery": [],
+  "Redshift": [],
+  "Apache Flink": [
+   "Flink"
+  ],
+  "Hadoop": [],
+  "Hive": [],
+  "Delta Lake": [],
+  "Data Warehousing": [
+   "data warehouse"
+  ],
+  "Data Modeling": [
+   "data modelling"
+  ],
+  "Data Lake": [
+   "data lakes",
+   "lakehouse"
+  ],
+  "Streaming": [
+   "real-time streaming",
+   "stream processing"
+  ],
+  "Fivetran": [],
+  "Dagster": [],
+  "Prefect": []
+ },
+ "Databases": {
+  "PostgreSQL": [
+   "Postgres"
+  ],
+  "MySQL": [],
+  "MongoDB": [],
+  "Redis": [],
+  "DynamoDB": [],
+  "Cassandra": [],
+  "Elasticsearch": [],
+  "SQL Server": [
+   "MSSQL"
+  ],
+  "Oracle": [],
+  "Neo4j": [],
+  "SQLite": []
+ },
+ "Cloud": {
+  "AWS": [
+   "Amazon Web Services"
+  ],
+  "GCP": [
+   "Google Cloud",
+   "Google Cloud Platform"
+  ],
+  "Azure": [
+   "Microsoft Azure"
+  ],
+  "SageMaker": [
+   "AWS SageMaker",
+   "Amazon SageMaker"
+  ],
+  "Vertex AI": [],
+  "Azure ML": [
+   "Azure Machine Learning"
+  ],
+  "AWS Lambda": [
+   "Lambda functions"
+  ],
+  "Amazon S3": [
+   "S3"
+  ],
+  "Amazon ECS": [
+   "ECS"
+  ],
+  "Amazon EKS": [
+   "EKS"
+  ],
+  "AWS Glue": [],
+  "Amazon Bedrock": [
+   "Bedrock"
+  ],
+  "Cloud Run": [],
+  "Azure OpenAI": []
+ },
+ "MLOps & DevOps": {
+  "MLOps": [],
+  "MLflow": [],
+  "Kubeflow": [],
+  "Weights & Biases": [
+   "W&B",
+   "wandb"
+  ],
+  "Docker": [],
+  "Kubernetes": [
+   "K8s"
+  ],
+  "Terraform": [],
+  "CI/CD": [
+   "CI / CD",
+   "continuous integration"
+  ],
+  "GitHub Actions": [],
+  "Jenkins": [],
+  "Git": [
+   "GitHub",
+   "GitLab"
+  ],
+  "Model Monitoring": [
+   "drift monitoring",
+   "model drift"
+  ],
+  "Feature Store": [
+   "feature stores",
+   "Feast"
+  ],
+  "Model Deployment": [
+   "model serving",
+   "deploying models"
+  ],
+  "Experiment Tracking": [],
+  "Prometheus": [],
+  "Grafana": [],
+  "Datadog": [],
+  "Linux": []
+ },
+ "BI & Analytics": {
+  "Tableau": [],
+  "Power BI": [
+   "PowerBI"
+  ],
+  "Looker": [],
+  "Excel": [],
+  "Data Visualization": [
+   "dashboards"
+  ],
+  "Product Analytics": [],
+  "Metabase": []
+ },
+ "Backend & APIs": {
+  "REST APIs": [
+   "REST",
+   "RESTful APIs",
+   "REST API"
+  ],
+  "FastAPI": [],
+  "Flask": [],
+  "Django": [],
+  "gRPC": [],
+  "GraphQL": [],
+  "Microservices": [],
+  "Node.js": [
+   "NodeJS"
+  ],
+  "Celery": [],
+  "RabbitMQ": []
+ },
+ "Frontend": {
+  "React": [
+   "React.js"
+  ],
+  "Next.js": [],
+  "HTML": [],
+  "CSS": [],
+  "Streamlit": [],
+  "Gradio": []
+ }
+}

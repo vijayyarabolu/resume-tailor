@@ -1,0 +1,23 @@
+Senior Machine Learning Engineer
+Acme Logistics (made-up company for the demo)
+Location: Seattle, WA (Hybrid, 2 days a week in the office)
+
+About the role
+Acme Logistics moves freight for 3,000 shippers. We are hiring a Senior Machine Learning Engineer to own model
+training, deployment and monitoring for our pricing and capacity forecasts.
+
+What you will do
+- Build and run ML pipelines with Python, PyTorch and Airflow on AWS (SageMaker, Lambda).
+- Serve models behind REST APIs on Kubernetes with CI/CD and Docker.
+- Monitor drift and latency with MLflow and Datadog; run A/B tests on model changes.
+- Work with product and operations teams to turn forecasts into decisions.
+
+Requirements
+- 5+ years of experience with Python and SQL in production ML.
+- Hands-on MLOps: model deployment, experiment tracking, feature stores.
+- Experience with Snowflake or Redshift.
+
+Nice to have
+- Spark or Databricks.
+- LLMs and RAG for internal tools.
+- Time series forecasting.

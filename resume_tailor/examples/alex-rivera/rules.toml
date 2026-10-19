@@ -1,0 +1,24 @@
+# What the checks enforce for Alex. Every key is optional; rules.py lists them all.
+bullet_words = [20, 32]          # a bullet outside this range fails
+bullet_words_target = [24, 29]   # what the prompt asks Claude for
+summary_words = [45, 75]
+summary_sentences = [3, 4]
+min_bullet_lines = 2             # one-line bullets fail (the base uses two lines each)
+
+# The title under the name follows the posting: Machine Learning Engineer, AI Engineer, Data Scientist,
+# Data Engineer or AI/ML Engineer. The summary then opens "<that title> with 6 years".
+headline_from_job = true
+summary_years = "6 years"
+summary_must_contain = ["6 years"]
+
+# Northwind was 2018 to 2020: no LLM, RAG, agent or vector database words in those bullets.
+era_jobs = ["Northwind"]
+
+# false: only skills from the base resume, known_skills.txt and the fact bank. true: hard skills the job names may
+# be added too (they are listed as "Added from JD" so you can check them before applying).
+jd_skills_allowed = false
+
+# The contact line's city. A hybrid or on-site job swaps in the job's city; a remote job keeps this one.
+location = "Portland, OR"
+
+banned_words = ["passionate", "rockstar"]

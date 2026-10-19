@@ -1,0 +1,12 @@
+# Alex Rivera is a made-up person for the demo. Copy this folder to start your own profile, or create one on the
+# Settings page.
+name = "Alex Rivera"
+years = 6
+# The Drive and Google Doc name: {name}, {title} and {company} are filled in.
+file_pattern = "{name}_{title}_Resume({company}).pdf"
+
+[[resumes]]
+file = "Alex_Rivera_ML_Engineer.docx"
+id = "ml_engineer"
+label = "ML Engineer"
+families = ["Machine Learning Engineer", "AI/ML Engineer", "AI Engineer"]
