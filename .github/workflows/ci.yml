@@ -1,0 +1,24 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # poppler reads the PDFs for the checks; LibreOffice runs the one end-to-end test that renders for real
+      - name: System packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends poppler-utils libreoffice-writer-nogui fonts-liberation
+      - name: Install
+        run: pip install -e .
+      - name: Tests (offline; the browser tests use the runner's Chrome)
+        run: python -m unittest discover -s tests -t . -v
