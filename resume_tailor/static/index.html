@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>Resume Tailor</title>
+<link rel="stylesheet" href="/static/ds.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/" aria-label="Resume Tailor home" title="Resume Tailor home">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2" class="b-track"/><path d="M8.5 9h7M8.5 12.5h7M8.5 16h4" class="b-arc"/></svg>
+    <span>Resume Tailor</span>
+  </a>
+  <span class="view-title" id="view-title" aria-hidden="true"></span>
+  <span class="top-gap"></span>
+  <span class="status" id="worker-status" title="The resume worker: makes and checks resumes"><span class="dot off" aria-hidden="true"></span><span class="status-text" id="worker">Checking…</span></span>
+  <div class="who" id="who" role="group" aria-label="Whose resumes"></div>
+  <button type="button" class="icon-btn" id="theme" aria-label="Light or dark theme" title="Light or dark theme"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5v15a7.5 7.5 0 0 0 0-15z" fill="currentColor" stroke="none"/></svg></button>
+  <button type="button" id="keys" class="icon-btn" aria-expanded="false" aria-controls="help" aria-label="Keyboard shortcuts (?)" title="Keyboard shortcuts (?)"><span aria-hidden="true">?</span></button>
+</header>
+<aside class="side" aria-label="Views">
+  <nav class="tabs" role="tablist" aria-orientation="vertical" aria-label="Views">
+    <h2>Resumes</h2>
+    <button role="tab" data-tab="new" aria-selected="true" title="Paste a job description to make a tailored resume"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span class="lbl">New<span class="lbl-x"> resume</span></span></button>
+    <button role="tab" data-tab="queue" title="Being made or waiting its turn; resumes that need you are listed here too"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2"/></svg><span class="lbl">Queue</span><span class="count n" id="count-queue"></span><span class="count n hot" id="count-needs"></span></button>
+    <button role="tab" data-tab="ready" title="Ready to apply with"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 12.5l2 2 4-4"/></svg><span class="lbl">Ready</span><span class="count n" id="count-ready"></span></button>
+    <button role="tab" data-tab="archived" title="Archived resumes keep their files; Restore puts one back"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="4" rx="1"/><path d="M5.5 8.5v10a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-10M10 12.5h4"/></svg><span class="lbl">Archived</span><span class="count n soft" id="count-archived"></span></button>
+    <h2>App</h2>
+    <button role="tab" data-tab="settings" title="Claude, PDF engine, Google, your profile and rules"><svg class="ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span class="lbl">Settings</span></button>
+  </nav>
+  <div class="side-foot"><a class="nav-link" id="tracker-link" href="/" target="_blank" rel="noopener" title="Open your job tracker in a new tab" hidden><span>Job tracker ↗</span></a></div>
+</aside>
+<div id="banners"></div>
+<div id="help" class="help" hidden></div>
+<main id="main">
+  <section id="tab-new" class="tab">
+    <header class="tab-head"><h1>New resume</h1><p class="hint">Paste a job description (or fetch it from its link); the resume is made in the Queue and lands in Ready.</p></header>
+    <div id="first-run" class="card first-run" hidden>
+      <h2>No profile yet</h2>
+      <p>A profile is your base resume (.docx), a fact bank and the rules the checks enforce. Try the app with a made-up person first, or set up your own in Settings.</p>
+      <div class="actions"><button type="button" class="primary" id="load-demo">Load the demo profile</button><button type="button" id="go-settings">Set up my own</button></div>
+    </div>
+    <form id="new-form" class="card form">
+      <div class="row">
+        <label>Person <select id="profile" name="profile"></select></label>
+        <label>Start from <select id="base" name="base"><option value="">the best base resume for this job</option></select></label>
+      </div>
+      <div class="row">
+        <label class="grow">Job link <input id="url" name="url" placeholder="https://… (fetched only where robots.txt allows; paste the text for LinkedIn)"></label>
+        <button type="button" id="fetch" class="ghost">Fetch the job</button>
+      </div>
+      <label>Job description <textarea id="jd" name="jd" rows="12" placeholder="Paste the job description"></textarea></label>
+      <div class="row">
+        <label class="grow">Company <input id="company" name="company"></label>
+        <label class="grow">Role <input id="role" name="role"></label>
+      </div>
+      <p id="new-msg" class="muted small"></p>
+      <div class="actions"><button type="submit" class="primary">Make the resume</button></div>
+    </form>
+  </section>
+  <section id="tab-queue" class="tab" hidden><header class="tab-head"><h1>Queue</h1><p class="hint">Being made right now, waiting its turn, or waiting for you (Accept as it is / Fix with note).</p></header><div id="queue"></div></section>
+  <section id="tab-ready" class="tab" hidden><header class="tab-head"><h1>Ready</h1><p class="hint">Open one to review it, approve it to Drive, or apply with it.</p></header><div id="ready"></div></section>
+  <section id="tab-archived" class="tab" hidden><header class="tab-head"><h1>Archived</h1><p class="hint">Archived resumes keep their files and Drive copies: Restore puts one back where it was; × Delete removes one for good (its files and Google Doc copy; the approved PDF in Drive stays). Older ones are deleted by themselves: Settings.</p></header><div id="archived"></div></section>
+  <section id="tab-settings" class="tab" hidden><header class="tab-head"><h1>Settings</h1><p class="hint">Everything here is saved on this computer in <code id="home-path">~/.resume-tailor</code>, never in the repo. Keys are stored in a file only your user can read.</p></header>
+    <div class="set-grid">
+    <div class="card set-status" aria-labelledby="status-h">
+      <h2 id="status-h">Status</h2>
+      <ul id="status-list" class="status-list"></ul>
+    </div>
+
+    <div class="card" id="set-claude">
+      <h2>1. Claude</h2>
+      <fieldset class="seg-field"><legend>How the app reaches Claude</legend>
+        <label><input type="radio" name="backend" value="api"> Anthropic API key</label>
+        <label><input type="radio" name="backend" value="cli"> Claude Code on this computer</label>
+        <label><input type="radio" name="backend" value="demo"> Demo mode (no AI)</label>
+      </fieldset>
+      <p class="hint" id="forced-demo" hidden>The app was started with <code>python -m resume_tailor demo</code>, which always uses demo mode and its own demo folder. Start it with <code>python -m resume_tailor serve</code> to use a real key.</p>
+      <div data-backend="api">
+        <label class="field"><span>API key</span>
+          <span class="inline"><input id="api-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-ant-..."><button type="button" id="save-key">Save</button><button type="button" class="ghost" id="remove-key">Remove</button></span>
+          <span class="hint" id="key-state"></span></label>
+        <details class="explain"><summary>Why a key, where to get one, and what it costs</summary>
+          <p>Anthropic doesn't offer a "Sign in with Claude" button for other people's apps, so this app talks to the Claude API with a key that belongs to you. Create one at <a href="https://platform.claude.com/settings/keys" target="_blank" rel="noopener">platform.claude.com/settings/keys</a> (sign up, add a payment method or credit under Billing, then Create key).</p>
+          <p>The API is pay as you go. Claude Sonnet 5.5 costs $2 per million input tokens and $10 per million output tokens (<a href="https://platform.claude.com/docs/en/about-claude/pricing" target="_blank" rel="noopener">pricing page</a>, checked October 2026). One resume takes 1 to 3 calls of about 10,000 tokens in and 5,000 out, so it costs roughly 7 to 20 cents. If you make 100 resumes a month, expect something like $7 to $20. Haiku 5.5 is about a twentieth of that, Opus 5.5 about double. New accounts sometimes get a small trial credit; there is no ongoing free tier.</p>
+          <p>Without a key, everything else still works: the queue, PDFs, checks, Drive and the demo mode. New resumes simply wait in the queue until a key is saved.</p>
+        </details>
+      </div>
+      <div data-backend="cli" hidden>
+        <p class="hint">Uses the Claude Code command line tool and whatever account it is logged in with (a Claude subscription works). Install it from <a href="https://claude.com/claude-code" target="_blank" rel="noopener">claude.com/claude-code</a>, then run <code>claude auth login</code> once in a terminal.</p>
+      </div>
+      <div data-backend="demo" hidden>
+        <p class="hint">Demo mode never calls Claude. A resume keeps your bullets as they are and gets the job's keywords you already own added to Skills, then goes through the same PDF and checks. Good for trying the app and for the tests.</p>
+      </div>
+      <label class="field"><span>Model</span><select id="model"></select><span class="hint">Sonnet is the sweet spot for this job. Changing it applies to the next resume.</span></label>
+      <div class="actions"><button type="button" data-test="claude">Test Claude</button><span class="hint test-out" data-out="claude"></span></div>
+    </div>
+
+    <div class="card" id="set-pdf">
+      <h2>2. PDF engine</h2>
+      <label class="field"><span>Make PDFs with</span><select id="pdf-engine">
+        <option value="auto">Automatic (LibreOffice, then Word, then Google Docs)</option>
+        <option value="libreoffice">LibreOffice (free, any OS)</option>
+        <option value="word">Microsoft Word (macOS)</option>
+        <option value="google">Google Docs (needs Google connected)</option>
+      </select><span class="hint" id="pdf-avail"></span></label>
+      <p class="hint">Every resume is measured against your base resume drawn by the same engine, so line lengths and page breaks are judged the way the PDF will look. LibreOffice: <a href="https://www.libreoffice.org/download/" target="_blank" rel="noopener">libreoffice.org</a>, or <code>sudo apt install libreoffice-writer</code> / <code>brew install --cask libreoffice</code>. The checks also need poppler (<code>apt install poppler-utils</code> / <code>brew install poppler</code>).</p>
+      <div class="actions"><button type="button" data-test="pdf">Test PDF</button><span class="hint test-out" data-out="pdf"></span></div>
+    </div>
+
+    <div class="card" id="set-google">
+      <h2>3. Google Drive <span class="tag">optional</span></h2>
+      <p class="hint">Connect Google to save approved PDFs to your Drive, open a resume as a Google Doc to edit by hand, and bring your edits back. The app asks only for access to files it creates itself.</p>
+      <details class="explain" id="google-steps"><summary>Create your Google OAuth client (about 5 minutes, free)</summary>
+        <p>Google doesn't allow an open source app to ship one shared client secret, so you make your own. It stays on this computer.</p>
+        <ol class="steps">
+          <li>Open <a href="https://console.cloud.google.com/projectcreate" target="_blank" rel="noopener">Google Cloud: new project</a> and create a project (any name, for example "Resume Tailor").</li>
+          <li>Turn on the <a href="https://console.cloud.google.com/apis/library/drive.googleapis.com" target="_blank" rel="noopener">Google Drive API</a> for that project (press Enable).</li>
+          <li>Open <a href="https://console.cloud.google.com/auth/branding" target="_blank" rel="noopener">Google Auth Platform</a>, press Get started, give the app a name and your email, pick Audience "External", and finish.</li>
+          <li>Under <a href="https://console.cloud.google.com/auth/audience" target="_blank" rel="noopener">Audience</a>, add your own Google address as a test user.</li>
+          <li>Under <a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noopener">Clients</a>, press Create client, choose Application type "Desktop app", and create it.</li>
+          <li>Copy the Client ID and Client secret into the boxes below (or download the JSON and paste its contents), then press Save.</li>
+          <li>Press Connect Google and approve. While the app is in testing, Google shows an "unverified app" screen: that is your own app, so press Continue.</li>
+        </ol>
+      </details>
+      <div class="row2">
+        <label class="field"><span>Client ID</span><input id="g-id" autocomplete="off" spellcheck="false" placeholder="1234-abc.apps.googleusercontent.com"></label>
+        <label class="field"><span>Client secret</span><input id="g-secret" type="password" autocomplete="off" spellcheck="false"></label>
+      </div>
+      <label class="field"><span>or paste the downloaded JSON</span><textarea id="g-json" rows="2" spellcheck="false" placeholder='{"installed": {"client_id": ...}}'></textarea></label>
+      <div class="actions"><button type="button" id="g-save">Save client</button><button type="button" class="ghost" id="g-remove">Remove client</button></div>
+      <p class="hint" id="g-state"></p>
+      <div class="actions"><a class="primary btnlink" id="g-connect" href="/oauth/google/start" target="_blank" rel="noopener">Connect Google</a><button type="button" class="danger" id="g-disconnect">Disconnect</button><button type="button" data-test="google">Test Google</button><span class="hint test-out" data-out="google"></span></div>
+      <p class="hint">Redirect address used: <code id="g-redirect"></code>. Open the app at 127.0.0.1 (not localhost) so the sign-in comes back to the same address.</p>
+    </div>
+
+    <div class="card" id="set-profile">
+      <h2>4. Your profile</h2>
+      <p class="hint">A profile is a folder: your base resume (.docx), <b>facts.md</b> (every fact Claude may use; a number that is in neither the base nor the fact bank fails the honesty check), <b>known_skills.txt</b> and <b>rules.toml</b> (what the checks enforce). See docs/PROFILE.md for the format.</p>
+      <div class="inline">
+        <select id="prof-pick" aria-label="Profile"></select>
+        <button type="button" id="prof-demo">Load demo profile</button>
+        <button type="button" class="ghost" id="prof-new">New profile</button>
+      </div>
+      <p class="hint bad" id="prof-problem" hidden></p>
+      <div class="file-tabs" role="tablist" aria-label="Profile files">
+        <button type="button" role="tab" data-file="profile.toml" aria-selected="true">profile.toml</button>
+        <button type="button" role="tab" data-file="facts.md">facts.md</button>
+        <button type="button" role="tab" data-file="known_skills.txt">known_skills.txt</button>
+        <button type="button" role="tab" data-file="rules.toml">rules.toml</button>
+      </div>
+      <textarea id="prof-text" class="code" rows="14" spellcheck="false" aria-label="File contents"></textarea>
+      <div class="actions"><button type="button" class="primary" id="prof-save">Save file</button><span class="hint" id="prof-msg"></span></div>
+      <h3>Base resumes</h3>
+      <ul id="prof-resumes" class="plain"></ul>
+      <label class="field"><span>Add or replace a base resume (.docx)</span><input id="prof-upload" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><span class="hint">Name, title and contact on the first three lines, then Summary, Skills ("Category: items"), Experience and Education headings. docs/BASE_RESUME.md has the details.</span></label>
+    </div>
+
+    <div class="card" id="set-tracker">
+      <h2>5. Job tracker <span class="tag">optional</span></h2>
+      <p class="hint">Another app (a job tracker, a script) can queue resumes and read the results over the HTTP API with this token. docs/API.md lists the endpoints.</p>
+      <label class="field"><span>API token</span><span class="inline"><input id="api-token" type="password" readonly><button type="button" id="show-token">Show</button><button type="button" id="copy-token">Copy</button></span></label>
+      <label class="field"><span>Link to your tracker (shown in the side menu)</span><input id="tracker-url" placeholder="http://127.0.0.1:8765/"></label>
+    </div>
+
+    <div class="card">
+      <h2>Housekeeping</h2>
+      <label class="field"><span>Delete archived resumes older than (days)</span><input id="keep-days" type="number" min="0" max="3650" step="1" inputmode="numeric" aria-label="Days to keep archived resumes (0 = for good)"><span class="hint">0 keeps them for good. The approved PDF in Drive always stays.</span></label>
+      <label class="field"><span>Claude calls per resume before it waits for you</span><input id="max-calls" type="number" min="1" max="10" step="1" inputmode="numeric"></label>
+    </div>
+    </div>
+  </section>
+</main>
+<aside id="panel" class="drawer" hidden aria-label="Resume">
+  <div class="drawer-head">
+    <div><div id="panel-title" class="title"></div><div id="panel-sub" class="meta small"></div></div>
+    <button id="panel-close" class="icon-btn" aria-label="Close (Esc)" title="Close (Esc)">✕</button>
+  </div>
+  <div id="panel-body"></div>
+</aside>
+<div id="toasts" class="toast-zone" role="status" aria-live="polite"></div>
+<script src="/static/app.js"></script>
+<script src="/static/setup.js"></script>
+</body>
+</html>
