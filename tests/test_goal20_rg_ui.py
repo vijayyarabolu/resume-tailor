@@ -55,8 +55,8 @@ class Goal20ArchivedUiTests(unittest.TestCase):
         self.assertTrue(lines, f"driver printed nothing: {out.stderr[-500:]}")
         checks = json.loads(lines[-1])["checks"]
         failed = [f"{c['name']}: {c['detail']}" for c in checks if not c["ok"]]
-        self.assertGreaterEqual(len(checks), 13)
         self.assertEqual(failed, [])
+        self.assertGreaterEqual(len(checks), 13, f"driver stopped early: {checks}")
         self.assertIsNone(live["deleting_at"], "Clear archived touched a resume that was not archived")
 
 
