@@ -41,7 +41,7 @@ coverage before and after, so I can tell quickly whether a resume is worth sendi
 
 ## Quickstart
 
-You need Python 3.11 or newer, poppler (it reads the PDFs for the checks) and a PDF engine. LibreOffice is the
+You need Python 3.12 or newer, poppler (it reads the PDFs for the checks) and a PDF engine. LibreOffice is the
 free one that works everywhere.
 
 ```sh
