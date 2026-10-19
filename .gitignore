@@ -1,0 +1,23 @@
+# Nothing personal belongs in this repo. Your settings, keys, profiles and resumes live in ~/.resume-tailor.
+__pycache__/
+*.pyc
+.DS_Store
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.env
+.env.*
+*.db
+*.db-*
+*.log
+secrets.json
+google_token*.json
+google_client*.json
+token
+# office files are ignored except the fictional demo profile and the test fixture
+*.docx
+*.pdf
+!resume_tailor/examples/**/*.docx
+!tests/fixtures/*.pdf

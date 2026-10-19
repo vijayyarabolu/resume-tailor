@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "resume-tailor"
+version = "1.0.0"
+description = "Tailors your resume to a job description with Claude, using only facts you wrote down, and checks every line before you send it."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Vijay Yarabolu" }]
+requires-python = ">=3.11"
+dependencies = ["anthropic>=1.0"]
+
+[project.optional-dependencies]
+dev = ["python-docx>=1.1"]
+
+[project.scripts]
+resume-tailor = "resume_tailor.__main__:main"
+
+[tool.setuptools]
+packages = ["resume_tailor"]
+
+[tool.setuptools.package-data]
+resume_tailor = ["static/*", "lexicon.json", "examples/*/*", "examples/*/*/*"]
