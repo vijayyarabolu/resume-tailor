@@ -4,7 +4,7 @@
 :root {
   color-scheme: light;
   --paper: #edf1ee; --raised: #ffffff; --sunk: #e4eae6; --ink: #14211c; --quiet: #4c5c55; --rule: #cfdad4;
-  --mark: #0a6b55; --on-mark: #ffffff; --signal: #a64d00; --bad: #b42318; --soft: color-mix(in oklab, var(--mark) 12%, var(--paper));
+  --mark: #0a6b55; --on-mark: #ffffff; --signal: #984600; --bad: #b42318; --soft: color-mix(in oklab, var(--mark) 12%, var(--paper));
   /* meaning (good / warning / bad / none) uses blue, orange, red and grey only, never green vs yellow: a
      red-green colour-blind reader can tell them apart. --mark stays the brand colour (buttons, focus, selection), which carries no
      meaning. *-fill are solid backgrounds for white text (WCAG AA in both themes). */
@@ -38,7 +38,7 @@ button:disabled { cursor: default; opacity: .55 }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap }
 .ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none }
 .ic.sm { width: 14px; height: 14px }
-kbd { font: 600 11px/1 var(--font); min-width: 20px; height: 20px; padding: 0 5px; display: inline-grid; place-items: center; border: var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--raised); color: var(--ink) }
+kbd { font: 600 11px/1 var(--font); min-width: 20px; height: 20px; padding: 0 4px; display: inline-grid; place-items: center; border: var(--line); border-bottom-width: 2px; border-radius: 5px; background: var(--raised); color: var(--ink) }
 
 /* shell: top bar, side navigation, bottom bar (phone), person switch, status */
 .top { height: var(--top); display: flex; align-items: center; gap: var(--s3); padding: 0 var(--s4) 0 var(--gut); border-bottom: var(--line); background: var(--paper); min-width: 0 }
@@ -50,21 +50,21 @@ kbd { font: 600 11px/1 var(--font); min-width: 20px; height: 20px; padding: 0 5p
 .app-link:hover { color: var(--ink); background: var(--soft) }
 .top-gap { flex: 1 }
 .side { background: var(--sunk); border-right: var(--line); display: flex; flex-direction: column; gap: 2px; padding: var(--s3) var(--s2); overflow-y: auto; min-height: 0 }
-.side h2 { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); padding: var(--s3) 10px var(--s1) }
+.side h2 { font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--quiet); padding: var(--s3) 8px var(--s1) }
 .side h2:first-child { padding-top: var(--s1) }
-.side [data-tab], .side .nav-link { display: flex; width: 100%; align-items: center; gap: 10px; height: 34px; padding: 0 10px; border-radius: var(--r-sm); color: var(--quiet); font-weight: 550; text-align: left; text-decoration: none; white-space: nowrap }
+.side [data-tab], .side .nav-link { display: flex; width: 100%; align-items: center; gap: 8px; height: 34px; padding: 0 8px; border-radius: var(--r-sm); color: var(--quiet); font-weight: 550; text-align: left; text-decoration: none; white-space: nowrap }
 .side [data-tab]:hover, .side .nav-link:hover { background: var(--soft); color: var(--ink) }
 .side [aria-selected="true"], .side [aria-current="page"] { background: var(--raised); color: var(--ink); font-weight: 700; box-shadow: inset 3px 0 0 var(--mark) }
 .side .n { margin-left: auto; font-size: var(--t-xs); font-weight: 700; color: var(--quiet); font-variant-numeric: tabular-nums }
-.side .n.hot { color: var(--on-mark); background: var(--signal); border-radius: var(--r-pill); padding: 0 7px; line-height: 18px }
+.side .n.hot { color: var(--on-mark); background: var(--signal); border-radius: var(--r-pill); padding: 0 8px; line-height: 18px }
 .side-foot { margin-top: auto; padding-top: var(--s3); border-top: var(--line); display: grid; gap: 2px }
 .bottom-tabs { display: none }
 .who { display: inline-flex; align-items: center; border: var(--line); border-radius: var(--r-pill); padding: 2px; background: var(--raised); flex: none }
-.who button { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px 0 4px; border-radius: var(--r-pill); color: var(--quiet); font-weight: 600 }
+.who button { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px 0 4px; border-radius: var(--r-pill); color: var(--quiet); font-weight: 600 }
 .who button[aria-pressed="true"] { background: var(--ink); color: var(--paper) }
 .who button::before { content: attr(data-initial); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--soft); color: var(--ink); font-size: 11px; font-weight: 750 }
 .who button[aria-pressed="true"]::before { background: var(--mark); color: var(--on-mark) }
-.status { display: inline-flex; align-items: center; gap: 7px; height: 32px; padding: 0 10px; border-radius: var(--r-pill); font-size: var(--t-sm); font-weight: 600; color: var(--quiet); white-space: nowrap }
+.status { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px; border-radius: var(--r-pill); font-size: var(--t-sm); font-weight: 600; color: var(--quiet); white-space: nowrap }
 .status:hover { background: var(--soft); color: var(--ink) }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good); flex: none }
 .dot.warn { background: var(--signal) }
@@ -73,7 +73,7 @@ kbd { font: 600 11px/1 var(--font); min-width: 20px; height: 20px; padding: 0 5p
 .banner { display: flex; align-items: center; gap: var(--s2); padding: 8px var(--gut); font-size: var(--t-sm); font-weight: 550; background: color-mix(in oklab, var(--bad) 12%, var(--paper)); border-bottom: var(--line) }
 
 /* buttons: one primary per screen; secondary (default), ghost, danger; sm for rows; icon buttons always have a label */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 36px; padding: 0 14px; border-radius: var(--r); border: 1px solid var(--rule); background: var(--raised); color: var(--ink); font-weight: 650; text-decoration: none; white-space: nowrap; transition: background var(--fast), border-color var(--fast) }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border-radius: var(--r); border: 1px solid var(--rule); background: var(--raised); color: var(--ink); font-weight: 650; text-decoration: none; white-space: nowrap; transition: background var(--fast), border-color var(--fast) }
 .btn:hover { border-color: var(--quiet); background: color-mix(in oklab, var(--soft) 55%, var(--raised)) }
 .btn.primary { background: var(--mark); border-color: var(--mark); color: var(--on-mark) }
 .btn.primary:hover { background: color-mix(in oklab, var(--mark) 86%, var(--ink)) }
@@ -82,14 +82,14 @@ kbd { font: 600 11px/1 var(--font); min-width: 20px; height: 20px; padding: 0 5p
 .btn.danger { color: var(--bad); border-color: color-mix(in oklab, var(--bad) 35%, var(--rule)) }
 .btn.danger:hover, .btn.danger[data-armed] { background: var(--bad); border-color: var(--bad); color: var(--raised) }
 .btn.done { border-color: var(--good); color: var(--good) }
-.btn.sm { height: 30px; padding: 0 10px; font-size: var(--t-sm); border-radius: var(--r-sm) }
+.btn.sm { height: 30px; padding: 0 8px; font-size: var(--t-sm); border-radius: var(--r-sm) }
 .btn[aria-busy="true"] { cursor: progress; opacity: 1 }
 .btn[aria-busy="true"]::before { content: ""; width: .9em; height: .9em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: ds-spin .8s linear infinite }
 @keyframes ds-spin { to { transform: rotate(360deg) } }
 .icon-btn { width: 36px; height: 36px; display: inline-grid; place-items: center; border-radius: var(--r); flex: none; color: inherit }
 .icon-btn:hover { background: var(--soft) }
 .icon-btn.sm { width: 28px; height: 28px }
-.lbl-btn { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 56px; height: 48px; padding: 0 6px; border-radius: var(--r); color: var(--quiet); font-size: 11.5px; font-weight: 600 }
+.lbl-btn { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 56px; height: 48px; padding: 0 8px; border-radius: var(--r); color: var(--quiet); font-size: 11.5px; font-weight: 600 }
 .lbl-btn:hover { background: var(--soft); color: var(--ink) }
 .lbl-btn[aria-pressed="true"] { color: var(--mark) }
 .lbl-btn[aria-pressed="true"] .ic { fill: currentColor }
@@ -100,7 +100,7 @@ kbd { font: 600 11px/1 var(--font); min-width: 20px; height: 20px; padding: 0 5p
 .chip:hover { border-color: var(--quiet) }
 .chip.on, .chip[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); font-weight: 650 }
 .chip.ghost { border-style: dashed; color: var(--quiet) }
-.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 5px; font-size: var(--t-xs); font-weight: 650; background: var(--sunk); color: var(--quiet); white-space: nowrap; flex: none }
+.tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 5px; font-size: var(--t-xs); font-weight: 650; background: var(--sunk); color: var(--quiet); white-space: nowrap; flex: none }
 .tag.ok { background: color-mix(in oklab, var(--good) 12%, var(--paper)); color: var(--good) }
 .tag.warn { background: color-mix(in oklab, var(--signal) 16%, var(--paper)); color: var(--signal) }
 .tag.bad { background: color-mix(in oklab, var(--bad) 14%, var(--paper)); color: var(--bad) }
@@ -110,20 +110,20 @@ kbd { font: 600 11px/1 var(--font); min-width: 20px; height: 20px; padding: 0 5p
 .seg button[aria-pressed="true"], .seg button[aria-selected="true"] { background: var(--ink); color: var(--paper); font-weight: 650 }
 
 /* fields */
-input, select, textarea { height: 36px; padding: 0 10px; border: var(--line); border-radius: var(--r-sm); background: var(--raised); min-width: 0 }
-textarea { height: auto; padding: 8px 10px; resize: vertical; line-height: 1.45 }
+input, select, textarea { height: 36px; padding: 0 8px; border: var(--line); border-radius: var(--r-sm); background: var(--raised); min-width: 0 }
+textarea { height: auto; padding: 8px 8px; resize: vertical; line-height: 1.45 }
 input[type="checkbox"] { width: 18px; height: 18px; padding: 0; accent-color: var(--mark) }
 input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 2px solid var(--mark); outline-offset: 0 }
-.field { display: grid; gap: 5px; align-content: start }
+.field { display: grid; gap: 4px; align-content: start }
 .field > span:first-child { font-size: var(--t-sm); font-weight: 650; color: var(--ink) }
 .hint { font-size: var(--t-sm); color: var(--quiet) }
 .saved-state { font-size: var(--t-sm); font-weight: 650; color: var(--good) }
 .saved-state.err { color: var(--bad) }
 
 /* popovers, dialogs, toasts */
-.popover { position: fixed; z-index: 75; min-width: 220px; max-width: 320px; max-height: 70vh; overflow-y: auto; background: var(--raised); border: var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-pop); padding: 6px }
+.popover { position: fixed; z-index: 75; min-width: 220px; max-width: 320px; max-height: 70vh; overflow-y: auto; background: var(--raised); border: var(--line); border-radius: var(--r-lg); box-shadow: var(--sh-pop); padding: 8px }
 .popover hr { border: 0; border-top: var(--line); margin: 4px 0 }
-.pop-h { font-size: var(--t-xs); color: var(--quiet); padding: 6px 8px 4px; font-weight: 700 }
+.pop-h { font-size: var(--t-xs); color: var(--quiet); padding: 8px 8px 4px; font-weight: 700 }
 .opt { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 0 8px; border-radius: var(--r-sm); text-align: left; width: 100%; text-decoration: none; color: inherit }
 .opt:hover, .opt:focus-visible { background: var(--soft) }
 dialog { border: var(--line); border-radius: var(--r-lg); background: var(--raised); color: var(--ink); padding: 0; box-shadow: var(--sh-dlg); width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px) }
@@ -136,7 +136,7 @@ dialog::backdrop { background: rgb(10 16 14 / .45) }
 @keyframes ds-rise { from { transform: translateY(8px); opacity: 0 } }
 
 /* loading and empty states */
-.sk-line { display: block; height: 10px; border-radius: 5px; background: var(--rule); margin: 6px 0; animation: ds-pulse 1.2s ease-in-out infinite alternate }
+.sk-line { display: block; height: 10px; border-radius: 5px; background: var(--rule); margin: 8px 0; animation: ds-pulse 1.2s ease-in-out infinite alternate }
 @keyframes ds-pulse { to { opacity: .45 } }
 .empty-state { display: grid; justify-items: center; align-content: center; gap: var(--s2); padding: var(--s8) var(--gut); text-align: center; color: var(--quiet); min-height: 220px }
 .empty-state b { color: var(--ink); font-size: var(--t-lg) }

@@ -29,3 +29,15 @@ class NoDashesTest(unittest.TestCase):
                 with self.subTest(file=name, text=m.group(0)[:60]):
                     if "prompt" not in m.group(0).lower():
                         self.assertNotRegex(m.group(0), DASH)
+
+
+
+class StatusShapeTest(unittest.TestCase):
+    """For colour-blind readers every status chip shows a shape beside its word (app.css ::before), never colour alone."""
+    def test_every_status_word_has_a_shape(self):
+        labels = re.search(r"const LABELS = \{([^}]*)\}", (STATIC / "app.js").read_text()).group(1)
+        css = (STATIC / "app.css").read_text()
+        shaped = {m for rule in re.findall(r"([^{}]+)\{ content: \"[^\"]+ \" \}", css) for m in re.findall(r"\.chip\.(\w+)::before", rule)}
+        for status in re.findall(r"(\w+): '", labels):
+            with self.subTest(status=status):
+                self.assertIn(status, shaped)
