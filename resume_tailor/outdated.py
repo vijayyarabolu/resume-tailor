@@ -9,12 +9,14 @@
 The PDF/docx checks are cached per file (path, size, mtime), so the Ready list costs nothing after the first look.
 times(job) gives "made" (the run that produced the current resume) and "updated" (a later re-import or Looks good).
 """
+import json
 import logging
+import os
 import re
-from functools import lru_cache
+import threading
 from pathlib import Path
 
-from . import checks, db, docxio, pdfx, rules
+from . import checks, config, db, docxio, pdfx, rules
 
 log = logging.getLogger(__name__)
 OLD_BASE = "made from your old resume"
@@ -36,9 +38,69 @@ def _short_date(message: str) -> str:
     return f"date wraps: {m.group(1)} ({m.group(2)})" if m else message
 
 
-@lru_cache(maxsize=512)
+# the checks run pdftotext twice per resume; kept only in memory (and at most 512), every start of the server spent
+# ~9 s on them for 243 ready resumes before a tracker's list could load. They now live in <home>/file_checks.json,
+# keyed by path, size and mtime, so a start reads one small file.
+
+DISK_NAME = "file_checks.json"
+_KEPT: dict[str, list] = {}
+_KEPT_FROM: list = [None]              # the data folder _KEPT was read from (tests switch it)
+_KEPT_LOCK = threading.Lock()
+
+
+def _disk() -> Path:
+    return Path(config.DATA) / DISK_NAME
+
+
+def _load_kept() -> None:
+    if _KEPT_FROM[0] == str(config.DATA):
+        return
+    _KEPT.clear()
+    try:
+        kept = json.loads(_disk().read_text())
+        _KEPT.update({k: v for k, v in kept.items() if all(_stat(f[0]) == tuple(f) for f in json.loads(k))})  # gone out
+    except (OSError, ValueError, TypeError):
+        pass                                        # none yet, or unreadable: worked out again as asked
+    _KEPT_FROM[0] = str(config.DATA)
+
+
+def _save_kept() -> None:
+    path = _disk()
+    part = path.with_name(f"{path.name}.{os.getpid()}.part")
+    try:
+        part.write_text(json.dumps(_KEPT))
+        part.replace(path)
+    except OSError as err:
+        log.warning("could not keep the file checks in %s: %s", path, err)
+
+
 def _file_problems(pdf_key: tuple, docx_key: tuple) -> tuple:
-    """(problems, headline, summary) of one stored PDF + .docx (cached by path, size and mtime)."""
+    """(problems, headline, summary) of one stored PDF + .docx (kept by path, size and mtime, in memory and on disk)."""
+    key = json.dumps([list(pdf_key), list(docx_key)])
+    with _KEPT_LOCK:
+        _load_kept()
+        hit = _KEPT.get(key)
+    if hit is not None:
+        return tuple(hit[0]), hit[1], hit[2]
+    out = _check_files(pdf_key, docx_key)
+    if out is None:                     # a failed check (pdftotext missing, a file being written): asked again next time
+        return (), "", ""
+    with _KEPT_LOCK:
+        _KEPT[key] = [list(out[0]), out[1], out[2]]
+        _save_kept()
+    return out
+
+
+def _cache_clear() -> None:
+    with _KEPT_LOCK:
+        _KEPT.clear()
+        _KEPT_FROM[0] = None
+
+
+_file_problems.cache_clear = _cache_clear
+
+
+def _check_files(pdf_key: tuple, docx_key: tuple) -> tuple | None:
     pdf, docx = Path(pdf_key[0]), Path(docx_key[0])
     try:
         structure = docxio.structure(docxio.read(docx))
@@ -46,7 +108,7 @@ def _file_problems(pdf_key: tuple, docx_key: tuple) -> tuple:
         by_page = [pdfx.flat_lines(pdfx.lines(pdf, p)) for p in range(1, pages + 1)]
     except (OSError, docxio.DocxError, pdfx.PdfError) as err:
         log.warning("re-check of %s failed: %s", pdf, err)
-        return (), "", ""
+        return None
     out = [f"{pages} pages"] if pages != 1 else []
     out += [_short_date(m) for m in checks.date_problems([], structure, by_page=by_page)]
     return tuple(out), structure.headline, structure.summary

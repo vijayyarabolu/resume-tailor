@@ -32,6 +32,16 @@ class OutdatedTests(unittest.TestCase):
         db.set_status(self.conn, jid, "ready")
         return db.get_job(self.conn, jid)
 
+    def test_a_failed_file_check_is_not_kept(self):
+        """The checks are kept on disk; a pdftotext failure was kept too, so that resume was
+        never checked again until its files changed."""
+        from unittest import mock
+        from resume_tailor import pdfx
+        keys = ((str(self.base.pdf), 1, 1), (str(self.base.docx), 1, 1))
+        with mock.patch.object(pdfx, "info", side_effect=pdfx.PdfError("pdftotext missing")):
+            self.assertEqual(outdated._file_problems(*keys), ((), "", ""))
+        self.assertNotEqual(outdated._file_problems(*keys)[1], "")              # checked again: the real headline
+
     def test_a_resume_from_the_current_base_is_current(self):
         self.assertEqual(outdated.outdated(self._ready(), self.prof), [])
         self.assertEqual(outdated.outdated(self._ready(sha=self.base.sha), self.prof), [])

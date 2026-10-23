@@ -56,7 +56,8 @@ Answer: `201 {"ok": true, "ids": [17], "worker_awake": true}`.
 | `GET /api/jobs/<id>` | one job, its result and its job description |
 | `GET /api/jobs/<id>/file/pdf` | the tailored PDF (redirects to a URL ending in the file name). Also `docx`, `png` (page image), `base.pdf`, `base.png`. Add `?dl=1` to stamp it as downloaded |
 | `GET /api/state?profile=<id>` | what the page shows: profiles, jobs, archived jobs, settings, worker status |
-| `GET /api/events?since=<event id>` | server-sent events: status changes, notes, toasts. The page refreshes on them |
+| `GET /api/events?since=<event id>` | server-sent events: status changes, notes, toasts. The page refreshes on them. `since=latest` sends only what happens from now on |
+
 
 A job's `status` is one of `queued`, `generating`, `checking`, `ready`, `needs_you` (it failed checks and waits
 for you to accept or fix it), `needs_place`, `waiting` (Claude isn't reachable yet), `failed` or `cancelled`.

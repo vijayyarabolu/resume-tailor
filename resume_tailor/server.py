@@ -30,7 +30,7 @@ LAN_NETS = (ipaddress.ip_network("10.0.0.0/8"), ipaddress.ip_network("172.16.0.0
             ipaddress.ip_network("192.168.0.0/16"))
 MAX_BODY = 8 * 1024 * 1024                  # a base resume upload is the largest body
 MIN_JD_CHARS = 80
-SSE_POLL_S = 1.0
+SSE_POLL_S = 0.5   # a new resume shows in a tracker within 2 s (one indexed read)
 STATE_LIMIT, ARCHIVED_LIMIT = 300, 200      # /api/state for everyone (older callers)
 STATE_PERSON_LIMIT = 5000                    # one person's page lists all of theirs, so its counts are right
 SSE_KEEPALIVE_S = 15.0
@@ -449,6 +449,9 @@ class Handler(BaseHTTPRequestHandler):
             return self._state((query.get("profile") or [None])[0])
         if path == "/api/events":
             since = (query.get("since") or ["0"])[0]
+            if since == "latest":                               # a tracker follows only what happens next
+
+                return self._events(db.last_event_id(self.app.conn))
             return self._events(int(since) if since.isdigit() else 0)
         if path == "/api/jobs":
             pid = (query.get("profile") or [None])[0]
