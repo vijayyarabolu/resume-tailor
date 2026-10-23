@@ -115,7 +115,7 @@ def cmd_recheck(args) -> int:
         inp = checks.Input(prof.id, base.structure, docxio.read(base.docx), measure, folder / "resume.docx",
                            folder / "resume.pdf", job["jd_text"], prof.known_skills, scores, base.id,
                            [b.text for b in prof.bases], prof.skill_text, prof.rules, job.get("role") or "",
-                           job.get("location") or "")
+                           job.get("location") or "", fact_bank=prof.fact_bank_resume)
         report = checks.run_all(inp)
         old = json.loads((folder / "checks.json").read_text()) if (folder / "checks.json").exists() else {}
         print(f"job {job_id} {folder.name}: stored {len(old.get('failures') or [])} failure(s) -> now "

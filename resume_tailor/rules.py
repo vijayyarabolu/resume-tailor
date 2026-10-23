@@ -19,6 +19,27 @@ A rules.toml looks like this (every key is optional):
 
     [verbs]                          # optional: the opening verbs one role's bullets must use, each once
     "Lumen Freight" = ["Built", "Shipped", "Cut"]
+
+Stricter rules for one master resume (all off by default):
+
+    headline_titles = ["AI Engineer", "Machine Learning Engineer"]   # headline_from_job picks only these; a data
+                                     # family or an unknown title maps to the first
+    summary_keep = [2, 3]            # summary sentences 2-3 stay the base's word for word
+    verbs_unique = true              # every bullet opens with its own verb, across the whole resume
+    short_bullets = [27, 4]          # at least 4 bullets have 27 words or fewer (varied lengths)
+    max_at_top = 5                   # at most 5 bullets at exactly the top of bullet_words
+    bullet_plain = true              # no semicolons, em/en dashes or parentheses inside a bullet
+    max_from_to = 4                  # at most 4 "from X to Y" phrasings in all bullets
+    fact_bank_numbers = true         # numbers only from this base and facts.md above a "## Part 2" heading (and
+                                     # confirmed notes), never from other bases or Part 2
+    jd_gaps = true                   # JD skills the person lacks are listed as Gaps (never added)
+    skill_rows_fixed = true          # skill row names, order, items and rendered line counts stay the base's
+    hm_review = true                 # one report-only hiring-manager pass on the finished resume
+    mirror_duties = true             # the JD's 3-5 responsibilities are mirrored on the bullets whose real work
+                                     # matches (same Claude call); checks.check_mirror guards each one
+
+    [employer_domains]               # with mirror_duties: a JD domain noun goes on a role's bullet only if listed
+    "Lumen Freight" = ["logistics", "freight", "supply chain"]
 """
 import re
 import tomllib
@@ -40,13 +61,16 @@ GENAI_TERMS = frozenset({"Pinecone", "OpenSearch", "Weaviate", "Chroma", "Chroma
                          "Azure AI Search", "Semantic Search", "Vector Databases", "pgvector", "Neo4j"})
 
 DEFAULT_RULES = {"era_jobs": (), "headline_may_change": True, "headline_from_job": False, "fallback_headline": None,
-                 "home_location": None,
+                 "home_location": None, "headline_titles": None, "summary_keep": None, "verbs_unique": False,
+                 "short_bullets": None, "max_at_top": None, "bullet_plain": False, "max_from_to": None,
+                 "jd_gaps": False, "fact_bank_numbers": False, "skill_rows_fixed": False, "hm_review": False,
+                 "mirror_duties": False, "employer_domains": None,
                  "summary_years": None, "headline": None, "summary_must_contain": (), "summary_start": None,
                  "verbs": None, "min_bullet_lines": 2, "jd_skills_allowed": False, "location": None,
                  "bullet_words": None, "bullet_words_target": None, "summary_words": None, "summary_sentences": None,
                  "banned_words": ()}
-RANGES = ("bullet_words", "bullet_words_target", "summary_words", "summary_sentences")
-LISTS = ("era_jobs", "summary_must_contain", "banned_words")
+RANGES = ("bullet_words", "bullet_words_target", "summary_words", "summary_sentences", "summary_keep")
+LISTS = ("era_jobs", "summary_must_contain", "banned_words", "headline_titles")
 # a bullet's last line under this share of the column is a widow; settings.json `widow_share` overrides it
 WIDOW_SHARE = 0.20
 
@@ -85,9 +109,14 @@ def parse(text: str) -> dict:
             if not (isinstance(value, list) and all(isinstance(v, str) for v in value)):
                 raise RulesError(f"rules.toml: {key} must be a list of strings")
             out[key] = tuple(value)
-        elif key == "verbs":
+        elif key == "short_bullets":
+            if not (isinstance(value, list) and len(value) == 2 and all(isinstance(v, int) for v in value)):
+                raise RulesError("rules.toml: short_bullets must be [words, how many], for example [27, 4]")
+            out[key] = tuple(value)
+        elif key in ("verbs", "employer_domains"):
             if not (isinstance(value, dict) and all(isinstance(v, list) for v in value.values())):
-                raise RulesError('rules.toml: [verbs] maps a company to a list of verbs, "Acme" = ["Built"]')
+                what = "verbs" if key == "verbs" else "domains"
+                raise RulesError(f'rules.toml: [{key}] maps a company to a list of {what}, "Acme" = ["..."]')
             out[key] = {str(k): tuple(str(x) for x in v) for k, v in value.items()}
         else:
             out[key] = value
@@ -143,7 +172,7 @@ def for_job(prules: dict, role: str | None, base_title: str, location: str | Non
             out["summary_start"] = f"{prules['headline']} with {prules['summary_years']}"
         return out
     fallback = prules.get("fallback_headline") or base_title
-    title = headline_rule.for_job(role or "", fallback)
+    title = headline_rule.for_job(role or "", fallback, prules.get("headline_titles"))
     years = prules.get("summary_years")
     return {**out, "headline": title, "summary_start": f"{title} with {years}" if years else prules.get("summary_start")}
 

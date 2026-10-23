@@ -256,7 +256,7 @@ def build_and_check(ctx: Context, content: dict, folder: Path, files: dict, extr
     files["pdf"] = str(pdf_path)
     if on_step:                                                  # the Re-import busy line follows the steps
         on_step("checking")
-    report = check_files(ctx, docx_path, pdf_path, tailored)
+    report = check_files(ctx, docx_path, pdf_path, tailored, {k: content.get(k) for k in ("mirrored", "jd_domain")})
     _write(folder / "checks.json", report.as_dict())
     try:
         files["png"] = str(pdfx.png(pdf_path, folder / "page-1", ctx.settings.get("pdf_dpi", 110)))
@@ -265,13 +265,16 @@ def build_and_check(ctx: Context, content: dict, folder: Path, files: dict, extr
     return Built(report, tailored, engine, files)
 
 
-def check_files(ctx: Context, docx_path: Path, pdf_path: Path, struct) -> checks.Report:
-    """The 8 checks, with today's rules, on a .docx + PDF already made (no render, no Claude)."""
+def check_files(ctx: Context, docx_path: Path, pdf_path: Path, struct, mirror: dict | None = None) -> checks.Report:
+    """The 8 checks, with today's rules, on a .docx + PDF already made (no render, no Claude). mirror: the answer's
+    mirrored responsibilities, checked when the person's rules mirror them (rules.toml mirror_duties)."""
     job, prof, base = ctx.job, ctx.prof, ctx.base
     scores = _score(prof, job, struct.full_text(), checks.era_texts(struct, prof.id, prof.rules), base.families)
+    mirror = mirror if ctx.prules.get("mirror_duties") and mirror else {}
     inp = checks.Input(prof.id, base.structure, ctx.base_doc, ctx.measure, docx_path, pdf_path, job["jd_text"],
                        prof.known_skills, scores, base.id, [b.text for b in prof.bases], prof.skill_text, prof.rules,
-                       job.get("role") or "", job.get("location") or "", tuple(ctx.notes))
+                       job.get("role") or "", job.get("location") or "", tuple(ctx.notes), prof.fact_bank_resume,
+                       mirror, prof.fact_bank)
     return checks.run_all(inp)
 
 
@@ -286,11 +289,30 @@ def _keep_notes(fields: dict, previous: dict) -> dict:
 def _result_fields(ctx: Context, built: Built, content: dict, n: int, model: str | None) -> dict:
     report = built.report
     added = set(content.get("added_from_jd") or []) | set(report.info.get("honesty", {}).get("added_from_jd") or [])
+    if not ctx.prules.get("jd_skills_allowed"):          # nothing is "added from the JD" then; jd_gaps lists them
+        added = set()
     return {"final_attempt": n, "checks": report.as_dict(), "ats": report.info.get("ats"),
             "review": content.get("review"), "match": content.get("match"), "gaps": content.get("gaps"),
             "change_notes": content.get("change_notes"), "added_from_jd": sorted(added),
+            "skill_gaps": report.info.get("honesty", {}).get("gaps"),
             "diff": diff.bullet_diff(ctx.base.structure, built.tailored), "engine": built.engine,
-            "model": model, "headline": built.tailored.headline}
+            "model": model, "headline": built.tailored.headline,
+            "mirror": mirror_summary(content, report) if ctx.prules.get("mirror_duties") else None}
+
+
+def mirror_summary(content: dict, report) -> dict | None:
+    """What a tracker can show: "JD responsibilities covered: 3 of 5", the tag per mirrored bullet (its place in
+    the tailored resume) and the gaps in plain words. None when the answer listed no responsibilities."""
+    duties = [str(d).strip() for d in content.get("jd_responsibilities") or [] if str(d).strip()]
+    if not duties:
+        return None
+    entries = [e for e in report.info.get("mirror") or [] if e.get("ok")]
+    covered = {e["responsibility"] for e in entries}
+    gaps = [d for d in duties if d not in covered]
+    gaps += [u for u in (str(x).strip() for x in content.get("unmatched") or []) if u and u not in gaps and u not in covered]
+    return {"responsibilities": duties, "domain": [str(d) for d in content.get("jd_domain") or []][:6],
+            "mirrored": [{k: e[k] for k in ("responsibility", "bullet_id", "phrase_used", "at")} for e in entries],
+            "unmatched": gaps, "covered": sum(1 for d in duties if d in covered), "total": len(duties)}
 
 
 # ---------- the attempt / repair loop ----------
@@ -409,7 +431,7 @@ def _full_round(ctx: Context, st: State, runner, why: str) -> tuple:
     job = ctx.job
     prompt = prompts.build(ctx.prof, ctx.base, ctx.measure, job["jd_text"], job["company"], job["role"],
                            ctx.scores0, st.failures, job.get("note"), st.n, why)
-    res = _call(ctx, st, runner, prompt, prompts.SCHEMA, folder)
+    res = _call(ctx, st, runner, prompt, prompts.schema_for(ctx.prules), folder)
     if _claude_problem(ctx, st, res, started, "attempt"):
         return None, res, started, folder
     return res.output, res, started, folder
@@ -581,7 +603,8 @@ def _wrap_trims(ctx: Context, st: State) -> dict:
 
 def _mechanical_round(ctx: Context, st: State) -> str | None:
     """Fix what Python can fix for free, re-render and re-check. None = nothing to do."""
-    fix = repair.mechanical(st.content, st.report, ctx.prules, ctx.job.get("jd_text") or "")
+    fix = repair.mechanical(st.content, st.report, ctx.prules, ctx.job.get("jd_text") or "",
+                            ctx.base.structure.as_content())
     wrap = _wrap_trims(ctx, st)
     if not fix.changed and not wrap:
         return None
@@ -648,7 +671,9 @@ def process(conn, job: dict, settings: dict | None = None, google=None, runner=N
         db.event(conn, job_id, prof.id, "note", f"resuming after round {st.n} from its content (repair mode)")
     note = (job.get("fix_note") or "").strip()
     if not note:
-        return _loop(ctx, st, runner, why)
+        status = _loop(ctx, st, runner, why)
+        hm_review(ctx, st, runner, status)
+        return status
     status = _fix_run(ctx, st, runner, why, note)
     db.clear_fix_note(conn, job_id)
     return status
@@ -727,6 +752,33 @@ def _loop(ctx: Context, st: State, runner, why: str) -> str:
         reason = f"{reason} ({stop_reason})"[:900]
     db.set_status(conn, job_id, "needs_you", f"needs you after {st.n} rounds", error=reason)
     return "needs_you"
+
+
+def hm_review(ctx: Context, st: State, runner, status: str) -> None:
+    """rules.toml hm_review: one Claude pass as the hiring manager for this JD on the finished resume (reads human?
+    clear fit?). Report only: it never changes the resume or its status, is not one of max_claude_calls, and a usage
+    limit or a bad answer just leaves no report."""
+
+    if not ctx.prules.get("hm_review") or status not in ("ready", "needs_you") or not st.content:
+        return
+    job = ctx.job
+    folder = config.RUNS / str(job["id"]) / "hm_review"
+    prompt = prompts.build_hm(ctx.prof, st.content, job["jd_text"], job["company"], job["role"])
+    try:
+        res = _call(ctx, st, runner, prompt, prompts.HM_SCHEMA, folder)
+    except Exception as err:                  # noqa: BLE001 (a report must never fail the resume)
+
+        log.warning("job %s: hiring-manager pass failed: %s", job["id"], err)
+        return
+    if not getattr(res, "ok", False) or not isinstance(res.output, dict):
+        db.event(ctx.conn, job["id"], ctx.prof.id, "note", f"hiring-manager pass: no report ({getattr(res, 'error', '')})"[:400])
+        return
+    out = res.output
+    st.result["hm_review"] = {"reads_human": bool(out.get("reads_human")), "clear_fit": bool(out.get("clear_fit")),
+                              "score": out.get("score"), "notes": [str(n) for n in out.get("notes") or []][:6],
+                              "at": _now(), "model": getattr(res, "model", None)}
+    db.update(ctx.conn, job["id"], result=json.dumps(st.result))
+    db.event(ctx.conn, job["id"], ctx.prof.id, "note", f"hiring-manager pass: {out.get('score')}/10")
 
 
 def account_for(prof) -> dict:

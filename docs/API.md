@@ -66,6 +66,11 @@ The useful parts of `result`:
 - `files`: paths of `pdf`, `docx`, `png`, `base_pdf`
 - `checks`: `{ok, failures: [{check, name, message}], info}`; `info.ats` has `base_pct`, `tailored_pct`, `missing`
 - `change_notes`, `review`, `gaps`, `added_from_jd`: what Claude said it changed and why
+- `skill_gaps`: job skills the person doesn't have, listed instead of added (rules.toml `jd_gaps`)
+- `hm_review`: `{reads_human, clear_fit, score, notes, at, model}`, the hiring-manager report (`hm_review`)
+- `mirror`: `{responsibilities, domain, mirrored: [{responsibility, bullet_id, phrase_used, at}], unmatched, covered,
+  total}`, the job's responsibilities and which bullets now carry them (`mirror_duties`); null without the rule
+
 - `diff`: bullet by bullet, base against tailored
 - `attempts`: every round with its kind (full, repair, mechanical, fix, reimport), failures, model, tokens, cost
 - `approved`: `{file_id, link, name, at}` once it is uploaded to Drive

@@ -58,6 +58,14 @@ class Profile:
     share_with: str | None = None
     config_dir: str | None = None                      # CLAUDE_CONFIG_DIR for the CLI backend (None = default)
     raw: dict = field(default_factory=dict)
+    fact_bank: str = ""                                # facts.md as written (without confirmed notes)
+
+    @property
+    def fact_bank_resume(self) -> str:
+        """facts.md up to a '## Part 2' heading. With rules.toml `fact_bank_numbers` a number on the page must come from
+        here or the base resume; Part 2 (interview-only facts) shapes wording only."""
+        cut = re.search(r"^## Part 2\b", self.fact_bank, re.M)
+        return self.fact_bank[:cut.start()] if cut else self.fact_bank
 
     def base(self, base_id: str | None):
         return next((b for b in self.bases if b.id == base_id), None)
@@ -177,7 +185,7 @@ def _load(pid: str, stamp: tuple) -> Profile:
     return Profile(pid, str(raw["name"]), str(raw.get("headline_default") or "Resume"),
                    int(years) if isinstance(years, int) else None, bases, _known(pid), skill_path, skill_text, prules,
                    list(raw.get("summary_anchors") or []), str(raw.get("file_pattern") or Profile.file_pattern),
-                   None, raw.get("claude_config_dir") or None, raw)
+                   None, raw.get("claude_config_dir") or None, raw, skill_text)
 
 
 def ids() -> list[str]:

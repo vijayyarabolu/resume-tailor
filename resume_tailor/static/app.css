@@ -198,3 +198,10 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px }
   .actions a { line-height: 42px }
 }
 @media (prefers-reduced-motion: reduce) { .spin { animation: none } }
+/* Gaps (JD skills not on the resume, rules.toml jd_gaps) and the hiring-manager report (hm_review) */
+
+.gaps { margin: 8px 0 }
+.gaps > div { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px }
+.chip.gap { height: auto; min-height: 22px; gap: 6px; font-weight: 550; color: var(--ink); background: color-mix(in oklab, var(--ink) 7%, var(--paper)) }
+.chip.gap button { min-height: 0; height: auto; padding: 1px 6px; font-size: var(--t-xs) }
+details.hm summary { font-weight: 600 }

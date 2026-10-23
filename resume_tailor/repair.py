@@ -36,6 +36,7 @@ _SKILL_REF = re.compile(r"skills(?: line)? '([^']+)'")
 _QUOTED = re.compile(r"'([^']+)'")
 _LINE_END = re.compile(r'"…(.*?)"')
 MAX_ATS_BULLETS = 2
+MULTI_BULLET = ("verbs_unique", "short_bullets", "at_top", "bullet_punct", "from_to")   # the bullet-shape checks
 
 
 @dataclass(frozen=True)
@@ -284,11 +285,62 @@ def fix_protruding(content: dict, line_texts: list, prules: dict, jd_text: str =
         else Mechanical(content, ())
 
 
-def mechanical(content: dict, report: checks.Report, prules: dict, jd_text: str = "") -> Mechanical:
-    """Every free fix the report allows, in one pass. Returns the new content and what was done."""
+_RANGE_DASH = re.compile(r"(?<=\d)\s*[–—]\s*(?=\$?\d)")
+
+
+def _master_items_back(row: dict, master: dict, notes: list) -> dict:
+    """The base's items in the order Claude put them, the dropped ones after; items it added in their place are
+    left out (the row keeps the base's line count)."""
+    wanted = _items_list(master)
+    keys = {checks.squash(m) for m in wanted}
+    kept = [i for i in _items_list(row) if checks.squash(i) in keys]
+    lost = [m for m in wanted if checks.squash(m) not in {checks.squash(k) for k in kept}]
+    if not lost:
+        return row
+    extra = [i for i in _items_list(row) if checks.squash(i) not in keys]
+    notes.append(f"skills '{row.get('category')}': base items put back ({', '.join(lost)})"
+                 + (f"; left out to keep the line count: {', '.join(extra)}" if extra else ""))
+    return {**row, "items": kept + lost}
+
+
+def restore_master(content: dict, report: checks.Report, prules: dict, base: dict | None) -> Mechanical:
+    """What must stay the base's comes back for free: summary sentences 2-3 (summary_keep), the skill row names in
+    order (skill_rows), every base skill item in its row (skill_items), and an en or em dash in a number range
+    becomes a hyphen (bullet_plain)."""
+    names = {f.name for f in report.failures}
+    new, notes = copy.deepcopy(content), []
+    keep = prules.get("summary_keep")
+    if base and keep and "summary_keep" in names:
+        lo, hi = keep
+        want, got = checks._sentence_list(base.get("summary") or ""), checks._sentence_list(new.get("summary") or "")
+        if len(got) >= hi and len(want) >= hi:
+            new["summary"] = " ".join(got[:lo - 1] + want[lo - 1:hi] + got[hi:])
+            notes.append(f"summary sentences {lo}-{hi} restored to the base's")
+    rows = new.get("skills") or []
+    if base and "skill_rows" in names and len(rows) == len(base.get("skills") or []):
+        for row, master in zip(rows, base["skills"]):
+            row["category"] = master["category"]
+        notes.append("skill row names restored to the base's, in order")
+    if base and "skill_items" in names:
+        for i, (row, master) in enumerate(zip(rows, base.get("skills") or [])):
+            rows[i] = _master_items_back(row, master, notes)
+    if "bullet_punct" in names:
+        for j, job in enumerate(new.get("jobs") or [], 1):
+            for k, b in enumerate(job.get("bullets") or [], 1):
+                fixed = _RANGE_DASH.sub("-", b)
+                if fixed != b:
+                    job["bullets"][k - 1] = fixed
+                    notes.append(f"bullet {k} of role {j}: number range dash made a hyphen")
+    return Mechanical(new, tuple(notes)) if notes else Mechanical(content, ())
+
+
+def mechanical(content: dict, report: checks.Report, prules: dict, jd_text: str = "",
+               base: dict | None = None) -> Mechanical:
+    """Every free fix the report allows, in one pass. Returns the new content and what was done. `base`: the
+    base's content (restore_master puts back what must not change)."""
     honesty = report.info.get("honesty") or {}
     visual = report.info.get("visual") or {}
-    out = Mechanical(content, ())
+    out = restore_master(content, report, prules, base)
     unknown = [t for t in honesty.get("unknown_terms") or [] if not named_in(t, jd_text)]   # never drop a JD skill
     if unknown:
         step = drop_unknown_terms(out.content, unknown, prules, honesty.get("unknown_categories") or {})
@@ -423,6 +475,18 @@ def plan(report: checks.Report, content: dict, base_measure, prules: dict, allow
         elif f.name in ("banned", "em_dash", "em_dash_chain") and sm:
             idx = _skills_index(content, sm.group(1))
             _merge(items, _skills_item(content, idx, f.message) if idx else None)
+        elif f.name in MULTI_BULLET:          # the message names every bullet involved
+
+            refs = list(_BULLET_REF.finditer(f.message))
+            for bm in refs[1:] if f.name == "verbs_unique" else refs:     # the first keeps its verb
+                _merge(items, _bullet_item(content, int(bm.group(2)), int(bm.group(1)), f.message))
+        elif f.name == "summary_keep":
+            _merge(items, _summary_item(content, f.message))
+        elif f.name in ("skill_row_lines", "dangling", "skill_rows", "skill_items"):
+            idx = _skills_index(content, sm.group(1)) if sm else None
+            targets = [idx] if idx else range(1, len(content.get("skills") or []) + 1)
+            for i in targets:
+                _merge(items, _skills_item(content, i, f.message))
         elif f.name in ("widow", "short_bullet", "locate", "bullet_words", "banned", "em_dash", "em_dash_chain",
                         "numbers") and m:
             _merge(items, _bullet_item(content, int(m.group(2)), int(m.group(1)), f.message))

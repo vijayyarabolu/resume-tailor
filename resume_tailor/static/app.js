@@ -337,6 +337,12 @@
     },
     accept: async (id) => { const r = await api(`/api/jobs/${id}/accept`, {}); if (r.ok) { toast('Accepted: moved to Ready'); if (String(state.open) === String(id)) closePanel(); } return r; },
     fixopen: async (id) => { state.fixOpen.add(String(id)); document.querySelectorAll(`form[data-fix="${id}"]`).forEach(f => { f.hidden = false; }); const t = document.querySelector(`#panel:not([hidden]) form[data-fix="${id}"] textarea`) || document.querySelector(`form[data-fix="${id}"] textarea`); if (t) t.focus(); return null; },
+    usedit: async (id, b) => {
+      const note = `I've used ${b.dataset.skill}: add it to the right Skills row.`;
+      state.drafts[id] = note;
+      document.querySelectorAll(`form[data-fix="${id}"] textarea`).forEach(t => { t.value = note; });
+      return ACTIONS.fixopen(id);
+    },
     fixcancel: async (id) => { state.fixOpen.delete(String(id)); delete state.drafts[id]; document.querySelectorAll(`form[data-fix="${id}"]`).forEach(f => { f.hidden = true; }); return null; },
     open: async (id) => { openJob(id); return null; },
     archive: async (id) => { const r = await api(`/api/jobs/${id}/archive`, {}); if (r.ok) undoToast(`Archived ${nameOf(id)}`, [Number(id)]); return r; },
@@ -441,14 +447,28 @@
     if (j.drive_link) out.push(`<a href="${esc(j.drive_link)}" target="_blank" rel="noopener">Drive: ${esc(j.drive_name)} ↗</a>`);
     return `<div class="actions">${out.join('')}</div>`;
   }
-  function panelDetails(res) {
+  // JD skills the person lacks are listed, never added; "I've used it" starts a note that confirms one
+
+  function gapsBlock(res, id) {
+    const gaps = res.skill_gaps || [];
+    if (!gaps.length) return '';
+    return `<div class="gaps"><b>Gaps</b> <span class="small muted">JD skills not in your resume or known skills; never added</span><div>${gaps.map(g => `<span class="chip gap">${esc(g)} <button data-act="usedit" data-id="${id}" data-skill="${esc(g)}" class="ghost small" title="Start a note: you have used ${esc(g)}; it goes into Skills and your confirmed skills">I've used it</button></span>`).join(' ')}</div></div>`;
+  }
+  function hmBlock(res) {
+    const h = res.hm_review;
+    if (!h) return '';
+    const yes = (v, a, b) => v ? `✓ ${a}` : `✗ ${b}`;
+    return `<details class="hm"><summary>Hiring manager: ${esc(String(h.score ?? '?'))}/10 · ${yes(h.reads_human, 'reads human', 'reads machine-made')} · ${yes(h.clear_fit, 'clear fit', 'fit not clear')}</summary><ul>${(h.notes || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted">A report only: it changed nothing.</p></details>`;
+  }
+  function panelDetails(res, id) {
     const ats = res.ats ? `<div class="score"><span>ATS</span><b>${res.ats.base_pct}%</b><span>base →</span><b>${res.ats.tailored_pct}%</b><span class="muted small">${esc(res.ats.vendor || '')}</span></div>` : '';
     const added = (res.added_from_jd || []).length ? `<p><b>Added from JD:</b> ${res.added_from_jd.map(esc).join(', ')}</p>` : '';
+    const gaps = gapsBlock(res, id), hm = hmBlock(res);
     const review = (res.review || []).length ? `<details><summary>Hiring manager / ATS review</summary><ul>${res.review.map(x => `<li>${esc(x)}</li>`).join('')}</ul>${res.match ? `<p class="small">${esc(res.match)}</p>` : ''}${(res.gaps || []).length ? `<p class="small"><b>Gaps:</b> ${res.gaps.map(esc).join('; ')}</p>` : ''}</details>` : '';
     const notes = (res.change_notes || []).length ? `<details><summary>Change notes</summary><ul>${res.change_notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : '';
     const attempts = (res.attempts || []).map(a => `<li>${a.kind && a.kind !== 'full' ? a.kind + ' ' : 'attempt '}${a.n}: ${a.duration_s}s, ${esc(a.model || '')}${a.cost_usd != null ? ', $' + Number(a.cost_usd).toFixed(2) : ''}${a.usage && a.usage.output_tokens ? ', ' + a.usage.output_tokens + ' out tokens' : ''}${a.failures.length ? ': ' + esc(a.failures.join('; ').slice(0, 300)) : ', passed'}</li>`).join('');
     const diff = res.diff ? diffBody(res.diff) : '';
-    return `${ats}${added}${review}${notes}<details><summary>Attempts (${(res.attempts || []).length})</summary><ul>${attempts}</ul></details>${diff}`;
+    return `${ats}${added}${gaps}${hm}${review}${notes}<details><summary>Attempts (${(res.attempts || []).length})</summary><ul>${attempts}</ul></details>${diff}`;
   }
   function diffBody(d) {
     return `<div class="diff"><h4>Headline</h4>${diffHtml(d.headline)}<h4>Summary</h4>${diffHtml(d.summary)}<h4>Skills</h4>${d.skills.map(s => `<div class="pair"><b>${esc(s.category)}:</b> ${diffHtml(s.items).replace(/^<div class="pair[^>]*>|<\/div>$/g, '')}</div>`).join('')}${d.jobs.map(job => `<h4>${esc(job.company)} · ${esc(job.title)} · ${esc(job.dates)}</h4>${job.bullets.map(diffHtml).join('')}`).join('')}</div>`;
@@ -464,7 +484,7 @@
     $('#panel-sub').textContent = [timeLine(j), j.profile, LABELS[j.status] || j.status, res.base ? `base ${res.base.label} (${res.base.why || ''})` : '', j.model || '', res.engine ? 'PDF via ' + res.engine : ''].filter(Boolean).join(' · ');
     const view = files.pdf ? (state.phone ? `<img class="pageimg" src="${esc(fileUrl(j, 'png'))}" alt="page 1">` : `<iframe class="pdf" src="${esc(fileUrl(j, 'pdf'))}#${PDF_VIEW}" title="PDF"></iframe>`) : '<p class="muted">No PDF yet.</p>';
     const fails = (res.checks && res.checks.failures && res.checks.failures.length) ? `<p class="warn">Last attempt failed ${res.checks.failures.length} check(s):</p><ul class="fails">${res.checks.failures.map(f => `<li>check ${f.check}: ${esc(f.message)}${(reimportOf(j).old_problems || []).includes(f.message) ? ' <span class="muted">(already there before your edit)</span>' : ''}</li>`).join('')}</ul>` : '';
-    $('#panel-body').innerHTML = `${staleBlock(j)}${panelButtons(j, id, files)}${fails}<div class="split"><div>${view}</div><div>${panelDetails(res)}</div></div>`;
+    $('#panel-body').innerHTML = `${staleBlock(j)}${panelButtons(j, id, files)}${fails}<div class="split"><div>${view}</div><div>${panelDetails(res, id)}</div></div>`;
     $('#panel').hidden = false;
     paintBusy();
   }

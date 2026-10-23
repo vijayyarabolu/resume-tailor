@@ -31,6 +31,31 @@ SCHEMA = {
         "added_from_jd": {"type": "array", "items": {"type": "string"}},
     },
 }
+HM_SCHEMA = {                                     # rules.toml hm_review: the hiring-manager pass (report only)
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["reads_human", "clear_fit", "score", "notes"],
+    "properties": {
+        "reads_human": {"type": "boolean", "description": "reads like a person wrote it"},
+        "clear_fit": {"type": "boolean", "description": "the fit for THIS job is clear in a 10-second scan"},
+        "score": {"type": "integer", "minimum": 1, "maximum": 10},
+        "notes": {"type": "array", "items": {"type": "string"}},
+    },
+}
+MIRROR_PROPS = {                                  # rules.toml mirror_duties: the JD's responsibilities on real bullets
+    "jd_responsibilities": {"type": "array", "items": {"type": "string"},
+                            "description": "the JD's 3-5 core responsibilities, in the JD's own words"},
+    "jd_domain": {"type": "array", "items": {"type": "string"},
+                  "description": "up to 6 business or industry domain nouns of the JD (never skills)"},
+    "mirrored": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                            "required": ["responsibility", "bullet_id", "phrase_used"],
+                                            "properties": {"responsibility": {"type": "string"},
+                                                           "bullet_id": {"type": "string"},
+                                                           "phrase_used": {"type": "string"}}}},
+    "unmatched": {"type": "array", "items": {"type": "string"}},
+}
+MIRROR_SCHEMA = {**SCHEMA, "required": SCHEMA["required"] + list(MIRROR_PROPS),
+                 "properties": {**SCHEMA["properties"], **MIRROR_PROPS}}
 MAX_JD_CHARS = 14000
 REPAIR_JD_CHARS = 6000
 
@@ -73,7 +98,7 @@ def _skill_budget(base_structure, measure) -> list:
     return lines
 
 
-def _ats_block(scores: dict | None, known: set, mirror: bool = False) -> str:
+def _ats_block(scores: dict | None, known: set, mirror: bool = False, fixed_rows: bool = False) -> str:
     if not scores:
         return "(ATS keywords unavailable)"
     terms = scores.get("terms") or []
@@ -84,8 +109,13 @@ def _ats_block(scores: dict | None, known: set, mirror: bool = False) -> str:
            f"Required JD keywords ({len(need)}): " + ", ".join(need),
            f"Preferred JD keywords ({len(nice)}): " + ", ".join(nice)]
     known_wanted = [n for n in need + nice if n in known]
-    out.append("Of these, the person owns (known skills; add every one of them to Skills and to one bullet): "
-               + (", ".join(known_wanted) or "none"))
+    if fixed_rows:      # allowed, never forced; a bullet only names work the fact bank supports
+        out.append("Of these, the person owns (known skills; you MAY add one to the fitting Skills row when the row "
+                   "keeps its line count, and to a bullet only where the fact bank supports that work): "
+                   + (", ".join(known_wanted) or "none"))
+    else:
+        out.append("Of these, the person owns (known skills; add every one of them to Skills and to one bullet): "
+                   + (", ".join(known_wanted) or "none"))
     if mirror:
         out.append("Mirror the JD: add EVERY required and preferred keyword above to Skills and to one fitting bullet "
                    "(required ones are checked by machine).")
@@ -122,8 +152,11 @@ def build(profile, base, measure, jd_text: str, company: str, role: str, scores:
         "",
         "=== CONTRACT (how the answer must be shaped; overrides any output format the fact bank describes) ===",
         f"The base resume below is the exact .docx that Python will refill. Its layout is locked: same sections in "
-        f"the same order, the same {len(structure.skills)} skill lines (you may rename and reorder categories, but "
-        f"the count stays {len(structure.skills)}), the same roles in the same order with the same bullet COUNTS "
+        f"the same order, the same {len(structure.skills)} skill lines ("
+        + ("their names and order are fixed; reorder the items inside a row so the JD's terms come first"
+           if prules.get("skill_rows_fixed") else
+           f"you may rename and reorder categories, but the count stays {len(structure.skills)}")
+        + f"), the same roles in the same order with the same bullet COUNTS "
         f"({counts}), same company names, titles and dates character for character. Only the "
         + ("headline, the " if prules.get("headline_may_change", True) else "")
         + "summary, the skill lines and the bullet texts change.",
@@ -144,9 +177,11 @@ def build(profile, base, measure, jd_text: str, company: str, role: str, scores:
         *_skill_budget(structure, measure),
         "",
         "Honesty (checked by machine, every failure costs a retry):",
-        "- Every number must already appear in the base resumes or the fact bank, unchanged. No new metrics.",
+        _numbers_line(prules),
         "- Employers, titles, dates, degree, location: unchanged.",
         ("- Skills and tools: only those in the base resumes or the KNOWN SKILLS list below."
+         + (" A JD skill in neither is a GAP: never add it, never swap in a near-equivalent (AWS work is not Azure); "
+            "Python lists the gaps for the person." if prules.get("jd_gaps") else "")
          if not prules["jd_skills_allowed"] else
          "- MIRROR THE JD'S HARD SKILLS: every hard skill the JD names, required AND preferred, programming "
          "languages included, goes into Skills AND is woven into one fitting bullet (the person knows them and "
@@ -157,8 +192,11 @@ def build(profile, base, measure, jd_text: str, company: str, role: str, scores:
         f"agents, RAG, LangChain, LangGraph, MCP, AgentCore, Semantic Kernel, GPT-4, Claude or vector databases.",
         "",
         "Writing (checked by machine):",
-        f"- No banned words: spearheaded, leveraged, cutting-edge, seamless, robust, delve, utilize, synergy. No em "
-        f"dashes (—) anywhere in bullets; use en dashes (–) only for ranges. {period}",
+        f"- No banned words: spearheaded, leveraged, cutting-edge, seamless, robust, delve, utilize, synergy. "
+        + ("No semicolons, em dashes, en dashes or parentheses inside bullets (hyphen ranges like 7-10 are fine). "
+           if prules.get("bullet_plain") else "No em dashes (—) anywhere in bullets; use en dashes (–) only for "
+                                              "ranges. ") + period,
+        *_shape_lines(prules),
         *_summary_lines(prules, base.id),
         *[f"- {job} bullets open with these verbs, each used once, any order: {', '.join(v)}."
           for job, v in (prules.get("verbs") or {}).items()],
@@ -174,9 +212,11 @@ def build(profile, base, measure, jd_text: str, company: str, role: str, scores:
         jd_text[:MAX_JD_CHARS],
         "",
         "=== ATS KEYWORDS (the keyword model's reading of this JD) ===",
-        _ats_block(scores, known, bool(prules.get("jd_skills_allowed"))),
+        _ats_block(scores, known, bool(prules.get("jd_skills_allowed")), bool(prules.get("skill_rows_fixed"))),
         "",
     ]
+    if prules.get("mirror_duties"):
+        parts += _mirror_lines(structure, prules)
     if note:
         parts += ["=== INSTRUCTION FROM THE USER FOR THIS RUN ===", note, ""]
     if failures:
@@ -188,9 +228,83 @@ def build(profile, base, measure, jd_text: str, company: str, role: str, scores:
         "[..]}] (same company strings and bullet counts as the base, in base order), change_notes: [what you changed "
         "and why, one line each], match: [one line on how well the resume fits the job], review: [the hiring-manager/ATS review bullets], "
         "gaps: [unfixable gaps, or empty], added_from_jd: [JD skills you added that are not in the base or known "
-        "skills, or empty]}.",
+        "skills, or empty]"
+        + ("; jd_responsibilities, jd_domain, mirrored: [{responsibility, bullet_id, phrase_used}], unmatched "
+           "(see JD RESPONSIBILITIES)}." if prules.get("mirror_duties") else "}."),
     ]
     return "\n".join(parts)
+
+
+def schema_for(prules: dict) -> dict:
+    """The full round's answer schema: with rules.toml `mirror_duties` it carries the mirrored responsibilities."""
+    return MIRROR_SCHEMA if prules.get("mirror_duties") else SCHEMA
+
+
+def _mirror_lines(structure, prules: dict) -> list:
+    """Recruiters scan for the job's own responsibility language. Same call, no extra Claude call."""
+    ids = [f"- {j}.{b} ({job['company'].split(',')[0]}): {text[:90]}"
+           for j, job in enumerate(structure.jobs, 1) for b, text in enumerate(job["bullets"], 1)]
+    domains = "; ".join(f"{k}: {', '.join(v[:4])}" for k, v in (prules.get("employer_domains") or {}).items())
+    return [
+        "=== JD RESPONSIBILITIES (mirror them; same answer, checked by machine) ===",
+        "1. Extract: list the JD's 3 to 5 core responsibilities in jd_responsibilities (the JD's own words, short: "
+        "\"partner with product and data science\", \"own models end to end\", \"build evaluation pipelines\") and "
+        "up to 6 domain nouns in jd_domain: the business or industry the job serves (payments, healthcare claims, ad "
+        "ranking, logistics ...), never a skill or technique (evaluation, observability, machine learning are not "
+        "domains).",
+        "2. Map: for each responsibility pick the ONE base bullet below whose underlying work truly matches it (use "
+        "the fact bank). Reword that bullet so it uses the JD's verb and phrasing, and record {responsibility, "
+        "bullet_id (the base id below, e.g. \"2.1\"), phrase_used (the exact words now on the bullet, copied "
+        "character for character)} in mirrored. A bullet carries at most one mirrored phrase. When no bullet's real "
+        "work matches, put the responsibility in unmatched and leave it out of the resume.",
+        "3. Rules: no new claims, projects, tools or numbers ("
+        + ("numbers only from the base resume and the fact bank above its Part 2" if prules.get("fact_bank_numbers") else
+           "numbers only from the base resume and the fact bank")
+        + "). A domain noun goes on a bullet only where that job's real work touched the domain ("
+        + (domains or "per the fact bank") + "); a freight company's work fits \"logistics\", not \"healthcare\". "
+        "Never soft-skill lists or vague words (team player, passionate, dynamic). Every rule above still holds: "
+        "the era rule, no banned words, word counts"
+        + (", opening verbs unique" if prules.get("verbs_unique") else "")
+        + (f", at most {prules['max_from_to']} \"from X to Y\"" if prules.get("max_from_to") is not None else "")
+        + ".",
+        "Base bullet ids:",
+        *ids,
+        "",
+    ]
+
+
+def _numbers_line(prules: dict) -> str:
+    if prules.get("fact_bank_numbers"):
+        return ("- Every number must already appear in this base resume or the FACT BANK above its Part 2, unchanged. "
+                "The fact bank's Part 2 (interview details) may shape wording but adds NO number. No new metrics, no "
+                "rounding up.")
+    return "- Every number must already appear in the base resumes or the fact bank, unchanged. No new metrics."
+
+
+def _shape_lines(prules: dict) -> list:
+    """The stricter rules.toml keys: what may change and how bullets are shaped, as the checks read it."""
+    out = []
+    if prules.get("summary_keep"):
+        lo, hi = prules["summary_keep"]
+        out.append(f"- Summary: only sentence 1 may adapt its focus words to the JD; sentences {lo}-{hi} stay the "
+                   f"base's word for word.")
+    if prules.get("skill_rows_fixed"):
+        out += ["- Bullets: you may reorder bullets WITHIN a job (strongest match first) and reword them with the JD's "
+                "exact terms only for work the base or fact bank supports. Never a new tool, metric or claim.",
+                "- Skills rows keep their names, order and rendered line counts; no row may end with one dangling "
+                "word on its last line. Reorder the items inside a row; never drop or rename a base skill item "
+                "(an allowed JD skill joins a row only when the row still keeps its line count)."]
+    if prules.get("verbs_unique"):
+        out.append("- Every bullet's opening verb differs from every other bullet's, across the whole resume.")
+    if prules.get("short_bullets"):
+        limit, need = prules["short_bullets"]
+        out.append(f"- Vary bullet lengths: at least {need} bullets have {limit} words or fewer"
+                   + (f"; at most {prules['max_at_top']} have exactly {prules['bullet_words'][1]} words."
+                      if prules.get("max_at_top") and prules.get("bullet_words") else "."))
+    if prules.get("max_from_to") is not None:
+        out.append(f"- At most {prules['max_from_to']} \"from X to Y\" phrasings in all bullets together; keep "
+                   f"the other number shapes (98%, halved, up from 50%, 2-3 a month from 6-7).")
+    return out
 
 
 def job_rules(profile, base, role: str) -> dict:
@@ -206,8 +320,10 @@ def _title_lines(prules: dict, base) -> list:
     if prules.get("headline_may_change", True):
         return []
     title = rules.headline_of(prules, base.structure.headline)
-    why = ("the plain title for this posting's family (AI Engineer, Machine Learning Engineer, Data Scientist, Data "
-           "Engineer or AI/ML Engineer); Python computed it" if prules.get("headline_from_job")
+    names = ", ".join(prules.get("headline_titles") or ("AI Engineer", "Machine Learning Engineer", "Data Scientist",
+                                                          "Data Engineer", "AI/ML Engineer"))
+    why = (f"the plain title for this posting's family (one of {names}); Python computed it"
+           if prules.get("headline_from_job")
            else "this person's title for every job, whatever the posting calls the role")
     return [f"TITLE RULE (overrides the fact bank): the title under the name is exactly \"{title}\" ({why}). Never add a "
             f"word, never a level word, never a made-up title (such as \"Applied AI Research Scientist\"). Return "
@@ -229,20 +345,23 @@ def _rule_lines(prules: dict, measure, structure, base_id: str = "") -> list:
     out = [f"- A bullet fills exactly 2 rendered lines: {int(cpl * 1.3)} to {int(cpl * 2 - 6)} characters "
            f"(about {cpl:.0f} per line), {hard[0]} to {hard[1]} words counted by machine. A last line under a fifth "
            f"of the width is a widow and fails; a third line fails.",
-           "- Every number must already be in the base resume or the fact bank. No new metrics, tools, "
-           "employers or dates. Skills and tools: only the base resumes and KNOWN SKILLS"
+           ("- Every number must already be in this base resume or the fact bank above its Part 2. No new metrics, tools, "
+            if prules.get("fact_bank_numbers") else
+            "- Every number must already be in the base resume or the fact bank. No new metrics, tools, ")
+           + "employers or dates. Skills and tools: only the base resumes and KNOWN SKILLS"
            + (", plus every hard skill the JD names (mirror the JD's hard skills)." if prules.get("jd_skills_allowed")
               else "."),
            f"- Era rule: bullets of {', '.join(prules.get('era_jobs') or ()) or 'the earliest job'} never mention "
            f"LLMs, GenAI, agents, RAG, LangChain, MCP, GPT-4, Claude or vector databases.",
            f"- No banned words (spearheaded, leveraged, cutting-edge, seamless, robust, delve, utilize, synergy). "
-           f"No em dashes in bullets. {period} Use the JD's exact wording for keywords.",
+           + ("No semicolons, em/en dashes or parentheses in bullets. " if prules.get("bullet_plain")
+              else "No em dashes in bullets. ") + f"{period} Use the JD's exact wording for keywords.",
            f"- The summary stays within {len(structure.summary) + 15} characters"
            + (f" ({sw[0]} to {sw[1]} words, " + (f"exactly {ss[0]}" if ss[0] == ss[1] else f"{ss[0]} to {ss[1]}")
               + " sentences)" if sw and ss else "") + "."]
     out += [f"- {job} bullets open with these verbs, each used once: {', '.join(v)}."
             for job, v in (prules.get("verbs") or {}).items()]
-    return out + _summary_lines(prules, base_id)
+    return out + _shape_lines(prules) + _summary_lines(prules, base_id)
 
 
 def build_repair(profile, base, measure, content: dict, plan_, jd_text: str, company: str, role: str,
@@ -345,3 +464,25 @@ def build_note(profile, base, measure, content: dict, note: str, failures: list,
         json.dumps(base.structure.as_content(), ensure_ascii=False, indent=1),
     ]
     return "\n".join(parts)
+
+
+def build_hm(profile, content: dict, jd_text: str, company: str, role: str) -> str:
+    """The hiring manager reads the finished resume against the JD. A report for the person: it adds no
+    fact, tool or number and changes nothing."""
+    resume = {"headline": content.get("headline"), "summary": content.get("summary"),
+              "skills": content.get("skills"), "jobs": content.get("jobs")}
+    return "\n".join([
+        f"You are the hiring manager for {role} at {company}. Read {profile.name}'s resume below against the job "
+        f"description, the way you would before deciding whether to call. Report only; you change nothing.",
+        "Answer: reads_human (does it read like a person wrote it, no machine-made phrasing?), clear_fit (is the fit "
+        "for THIS job clear in a 10-second scan?), score (1-10, would you call), and 3-5 short notes: what you check "
+        "first and whether you find it, what reads machine-made, what to move up. Never suggest a fact, tool, number "
+        "or claim that is not already on the resume. Plain words, no flattery. ONE JSON object, nothing else.",
+        "",
+        "=== THE RESUME ===",
+        json.dumps(resume, ensure_ascii=False, indent=1),
+        "",
+        f"=== THE JOB: {company}, {role} ===",
+
+        jd_text[:MAX_JD_CHARS],
+    ])

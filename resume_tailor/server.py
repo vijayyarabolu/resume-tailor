@@ -20,7 +20,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, quote, urlsplit
 
 from . import (config, db, docedit, gdocs, google_auth, headline, jd, outdated, places, profiles, progress, purge,
-               reasons, setup_status, versions, worker)
+               reasons, rules, setup_status, versions, worker)
 
 log = logging.getLogger(__name__)
 COOKIE = "rg_token"
@@ -71,7 +71,8 @@ def client_allowed(ip: str, allow_lan: bool) -> bool:
 def _named_stem(prof, base, job: dict) -> str:
     """The base's own name with the title of the role it was tailored for (headline.file_stem)."""
     title = db.result_of(job).get("headline") if job.get("result") else None
-    title = title or headline.for_job(job.get("role") or "", base.label)
+    allowed = rules.for_profile(prof.id, prof.rules).get("headline_titles")      # rules.toml headline_titles
+    title = title or headline.for_job(job.get("role") or "", base.label, allowed)
     return headline.file_stem(prof.name, base.docx.stem, title, [b.docx.stem for b in prof.bases])
 
 

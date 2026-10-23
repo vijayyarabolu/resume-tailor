@@ -35,8 +35,14 @@ AI = _words(r"ai", r"a\.i\.?", r"artificial intelligence", r"gen\s?ai", r"genera
             r"agentic", r"ai tools", r"applied ai")
 
 
-def for_job(title: str, fallback: str) -> str:
-    """The headline for a posting titled `title`: one of TITLES by its family, else `fallback`."""
+def for_job(title: str, fallback: str, allowed: tuple | None = None) -> str:
+    """The headline for a posting titled `title`: one of TITLES by its family, else `fallback`. `allowed` (rules.toml
+    headline_titles, first = the person's default) maps a title outside the list to that default."""
+    found = _family(title, fallback)
+    return found if not allowed or found in allowed else allowed[0]
+
+
+def _family(title: str, fallback: str) -> str:
     text = (title or "").replace(" ", " ")
     if DATA_SCIENCE.search(text):
         return DATA_SCIENTIST

@@ -86,6 +86,9 @@ class Input:
     role: str = ""                    # the posting's title (the title under the name follows it)
     location: str = ""                # the job's "City, ST" for the contact line ("" = the person's own)
     notes: tuple = ()                 # this job's Fix-with-note texts (what they name is user-confirmed)
+    fact_bank: str = ""               # facts.md above "## Part 2" (fact_bank_numbers: numbers from here and this base)
+    mirror: dict = field(default_factory=dict)   # the answer's mirrored / jd_domain (tailoring rounds only)
+    fact_bank_all: str = ""           # the whole facts.md (Part 2 shapes wording, never new numbers)
 
 
 def job_rules(inp: "Input") -> dict:
@@ -156,6 +159,20 @@ def skill_line_counts(lines: list, structure: docxio.Structure) -> dict:
         if current is not None:
             counts[current] = counts.get(current, 0) + 1
     return counts
+
+
+def skill_row_texts(lines: list, structure: docxio.Structure) -> dict:
+    """The rendered line texts of each skill row ({category: [line, ...]}), scanning the Skills section."""
+    others = tuple(h for h in structure.sections if h.lower() != "skills")
+    rows, current = {}, None
+    starts = {squash(s.category): s.category for s in structure.skills}
+    for ln in section_lines(lines, "Skills", others):
+        key = squash(ln.text)
+        hit = next((cat for sq, cat in starts.items() if sq and key.startswith(sq)), None)
+        current = hit if hit is not None else current
+        if current is not None:
+            rows.setdefault(current, []).append(ln.text)
+    return rows
 
 
 def rendered_lines(lines: list, text: str) -> int:
@@ -281,6 +298,19 @@ def date_problems(lines: list, structure: docxio.Structure, by_page: list | None
     return out
 
 
+def skill_item_problems(base: docxio.Structure, tstruct: docxio.Structure) -> list:
+    """skill_rows_fixed: every base item stays in its row (reorder only; an allowed JD skill may join). A dropped or
+    renamed item ('Multi-Agent Workflows' -> 'Multi-Agent Orchestration') fails."""
+    out = []
+    for master, row in zip(base.skills, tstruct.skills):
+        have = {squash(i) for i in docxio.split_items(row.items)}
+        lost = [i.strip() for i in docxio.split_items(master.items) if squash(i) not in have]
+        if lost:
+            out.append(Failure(2, "skill_items", f"skills '{master.category}' dropped base items: {', '.join(lost)}; "
+                                                 "keep every base item in its row and only reorder them"))
+    return out
+
+
 def check_layout(inp: Input, tstruct: docxio.Structure, lines: list | None = None) -> list:
     prules = job_rules(inp)
     want = prules.get("headline")
@@ -290,6 +320,11 @@ def check_layout(inp: Input, tstruct: docxio.Structure, lines: list | None = Non
     if want and tstruct.headline != want:                     # the job family's title, set by Python
         out.append(Failure(2, "layout", f"headline is {tstruct.headline!r}; the title under the name must be "
                                         f"{want!r} (the plain title for this posting's family)"))
+    if prules.get("skill_rows_fixed"):                        # row names and order are the base's
+        got, base = [s.category for s in tstruct.skills], [s.category for s in inp.base_structure.skills]
+        if got != base:
+            out.append(Failure(2, "skill_rows", f"skill rows are {got}; they must stay the base's, in order: {base}"))
+        out += skill_item_problems(inp.base_structure, tstruct)
     if lines:
         out += [Failure(2, "date_wrap", m) for m in date_problems(lines, tstruct)]
     return out
@@ -351,11 +386,35 @@ def check_fit(inp: Input, tstruct: docxio.Structure, lines: list) -> tuple:
     total = sum(counts.values())
     if total > m.skill_total:
         out.append(Failure(4, "skill_total", f"the skills block is {total} lines; the base fits in {m.skill_total}"))
+    if prules.get("skill_rows_fixed"):
+        out += _skill_row_problems(tstruct, lines, m.skill_lines, counts, cap_each)
     return out, info
+
+
+def _skill_row_problems(tstruct: docxio.Structure, lines: list, base_lines: dict, counts: dict, cap: int) -> list:
+    """skill_rows_fixed: every row renders in exactly the base's line count (a wrap past it is already reported),
+    and a row of 2+ lines never ends with one dangling word."""
+    out = []
+    texts = skill_row_texts(lines, tstruct)
+    for s in tstruct.skills:
+        n, want = counts.get(s.category, 0), base_lines.get(s.category)
+        if want and n and n < want or (want and n > want and n <= cap):
+            out.append(Failure(4, "skill_row_lines", f"skills line '{s.category}' renders in {n} line(s); the "
+                                                     f"base's row is exactly {want}: "
+                                                     + ("add a term it already allows" if n < want else "drop a term")))
+        rows = texts.get(s.category) or []
+        last = rows[-1].split() if len(rows) > 1 else []
+        if len(last) == 1:
+            out.append(Failure(4, "dangling", f"skills line '{s.category}' ends with one dangling word on its last "
+                                              f"line ('{last[0]}'): reorder or swap a term so the last line has more"))
+    return out
 
 
 def _numbers(text: str) -> set:
     return {t.lstrip("$").replace(",", "") for t in NUMBER.findall(text)}
+
+
+_VENDOR = re.compile(r"^(aws|amazon|azure|microsoft|google cloud|gcp|google)\s+", re.I)   # a cloud's own name prefix
 
 
 def check_honesty(inp: Input, tstruct: docxio.Structure, scores: dict | None) -> tuple:
@@ -371,6 +430,10 @@ def check_honesty(inp: Input, tstruct: docxio.Structure, scores: dict | None) ->
     jd_terms = set((scores or {}).get("jd_found") or {})
     known_names = {squash(k) for k in inp.known_skills}          # known_skills.txt itself (the lexicon scan of
     allowed |= {t for t in tailored if squash(t) in known_names}  # that list misses some names, e.g. 'GCP')
+    # the title under the name is picked by the rule from the person's own titles, never a skill claim
+    # ("Machine Learning Engineer" from headline_titles on a base that names no "Machine Learning")
+    titles = " ".join(prules.get("headline_titles") or ())
+    allowed |= {t for t in tailored if titles and re.search(rf"(?i)(?<!\w){re.escape(t)}(?!\w)", titles)}
     unknown = sorted(tailored - allowed)
     if prules["jd_skills_allowed"]:
         info["added_from_jd"] = sorted(t for t in unknown if t in jd_terms)
@@ -392,8 +455,17 @@ def check_honesty(inp: Input, tstruct: docxio.Structure, scores: dict | None) ->
             info["era_violations"] += bad
             out.append(Failure(5, "era", f"{job['company']} bullets mention GenAI-era tools that did not exist in "
                                          f"that role: {', '.join(bad)}; use classic ML / data engineering wording"))
+    if prules.get("jd_gaps"):                       # a JD skill the person lacks is listed, never added
+        confirmed_names = {squash(t) for t in info["confirmed_by_note"]}
+        info["gaps"] = sorted({t["name"] for t in (scores or {}).get("terms") or []
+                               if t["name"] not in allowed and squash(t["name"]) not in known_names
+                               and squash(_VENDOR.sub("", t["name"])) not in known_names   # AWS Glue = Glue
+                               and squash(t["name"]) not in confirmed_names})
+    sources = list(inp.all_base_texts) + [inp.skill_text or ""]
+    if prules.get("fact_bank_numbers") and getattr(inp, "fact_bank", ""):   # this base + facts.md above Part 2 + notes
+        sources = [inp.base_structure.full_text(), inp.fact_bank, "\n".join(confirmed.read(inp.pid, "facts"))]
     allowed_numbers = set()
-    for text in list(inp.all_base_texts) + [inp.skill_text or ""] + [confirmed.fact_text(n) for n in notes]:
+    for text in sources + [confirmed.fact_text(n) for n in notes]:
         allowed_numbers |= _numbers(text)
     body = "\n".join([tstruct.summary] + [b for j in tstruct.jobs for b in j["bullets"]])
     bad_numbers = []
@@ -406,6 +478,149 @@ def check_honesty(inp: Input, tstruct: docxio.Structure, scores: dict | None) ->
         info["bad_numbers"] = bad_numbers
         out.append(Failure(5, "numbers", "numbers that are not in the base resume or fact bank: "
                                          + "; ".join(bad_numbers[:6])))
+    return out, info
+
+
+# ---------- mirrored JD responsibilities (rules.toml mirror_duties) ----------
+
+MIRROR_SHARE = 0.6                    # share of a mirrored bullet's own words (the JD phrase left out) the facts must hold
+_STOP = frozenset("a an and the of for to in on with by from at as into its it is are was were that this these those "
+                  "or so than then each per via over under across up down both all our their his her them they he "
+                  "she we you be been being has have had do did not no only also more most new now".split())
+
+
+def _content_words(text: str) -> set:
+    return {w for w in re.findall(r"[a-z][a-z0-9+#]{2,}", squash_dashes(text).lower()) if w not in _STOP}
+
+
+def squash_dashes(text: str) -> str:
+    return re.sub(r"[\u2010-\u2015-]", " ", text or "")
+
+
+def _stem(word: str) -> str:
+    return re.sub(r"(ing|ed|es|s)$", "", word) if len(word) > 4 else word
+
+
+def employer_facts(fact_bank: str, company: str) -> str:
+    """Every fact-bank section about one employer ("## Lumen Freight, USA (Mar 2023 to present)" and a later
+    "### Lumen Freight" in Part 2), by the company's first word."""
+    head = (company or "").split(",")[0].split()[0].lower() if (company or "").strip() else ""
+    out, keep = [], False
+    for line in (fact_bank or "").splitlines():
+        if line.startswith("#"):
+            title = line.lstrip("#").strip().lower()
+            keep = line.startswith(("## ", "### ")) and bool(head) and title.startswith(head)
+            continue
+        if keep:
+            out.append(line)
+    return "\n".join(out)
+
+
+def _skill_names(inp: Input) -> list:
+    names = list(inp.known_skills)
+    for s in inp.base_structure.skills:
+        names += [x.strip() for x in re.split(r",(?![^()]*\))", s.items) if x.strip()]
+    return [n for n in names if len(n) >= 3 or (len(n) >= 2 and n.isupper())]
+
+
+def _has(term: str, text: str) -> bool:
+    return bool(re.search(rf"(?i)(?<![\w]){re.escape(term)}(?![\w])", text))
+
+
+# a concept word the facts say another way: an LLM agent is generative AI (an eval run flagged "Generative AI" on a
+# bullet about real LLM agent work)
+PREFIX_MIN = 4                        # "eval" holds "evaluation"; "ai" / "ml" are too short to hold anything
+_SAYS = {"generative": ("llm", "llms", "gpt", "claude", "bedrock", "genai", "gen ai")}
+
+
+def _held(term: str, facts: str) -> bool:
+    """The term is in the facts, word for word or as a concept: every content word of it (stemmed) is there
+    ("LLM Fine-tuning" over a LoRA bullet that says "fine-tuned" an "LLM"). A named tool is one word that is not."""
+    if _has(term, facts):
+        return True
+    words = _content_words(term)
+    known = {_stem(w) for w in _content_words(facts)}
+    return bool(words) and all(_known(_stem(w), known) or any(_has(x, facts) for x in _SAYS.get(w, ())) for w in words)
+
+
+def _known(stem: str, known: set) -> bool:
+    """The word or a short form of it is in the facts: "evaluation" over "eval", "deployment" over "deployed"
+    (an eval run flagged "LLM Evaluation" on golden-set work whose facts say "eval")."""
+    return stem in known or any(len(k) >= PREFIX_MIN and (stem.startswith(k) or k.startswith(stem)) for k in known
+                                if len(stem) >= PREFIX_MIN)
+
+
+def find_mirrored(tstruct: docxio.Structure, base: docxio.Structure, entry: dict) -> tuple | None:
+    """(job index, bullet index) of the tailored bullet carrying entry's phrase in the job its bullet_id names."""
+    m = re.match(r"^\s*(\d+)\.(\d+)\s*$", str(entry.get("bullet_id") or ""))
+    phrase = squash(squash_dashes(str(entry.get("phrase_used") or ""))).lower()
+    if not m or not phrase:
+        return None
+    j = int(m.group(1)) - 1
+    if not (0 <= j < len(tstruct.jobs)) or j >= len(base.jobs):
+        return None
+    for k, text in enumerate(tstruct.jobs[j]["bullets"]):
+        if phrase in squash(squash_dashes(text)).lower():
+            return j, k
+    return None
+
+
+def mirror_problem(inp: Input, tstruct: docxio.Structure, entry: dict, at: tuple) -> str | None:
+    """Why the bullet carrying a mirrored phrase is not a fact-bank fact (None = it is): its numbers, tools and own
+    words must come from the base bullet it rewords plus that employer's fact-bank lines and the confirmed facts;
+    a JD domain noun on it must be one the employer's real work touched."""
+    prules = job_rules(inp)
+    j, k = at
+    m = re.match(r"^\s*(\d+)\.(\d+)\s*$", str(entry.get("bullet_id")))
+    jb, kb = int(m.group(1)) - 1, int(m.group(2)) - 1
+    base_job = inp.base_structure.jobs[jb]
+    if not (0 <= kb < len(base_job["bullets"])):
+        return f"bullet id {entry.get('bullet_id')} is not a base bullet"
+    text, company = tstruct.jobs[j]["bullets"][k], base_job["company"]
+    notes = "\n".join(confirmed.read(inp.pid, "facts")) + "\n" + "\n".join(confirmed.fact_text(n) for n in inp.notes or ())
+    facts = "\n".join([base_job["bullets"][kb], employer_facts(inp.fact_bank_all or inp.fact_bank, company), notes])
+    short = company.split(",")[0]
+    bad = sorted(_numbers(text) - _numbers(facts))
+    if bad:
+        return f"numbers {', '.join(bad)} are not in {short}'s facts"
+    tools = [t for t in _skill_names(inp) if _has(t, text) and not _held(t, facts)]
+    if tools:
+        return f"names {', '.join(sorted(set(tools))[:4])}, which the fact bank does not put at {short}"
+    own = _content_words(text) - _content_words(str(entry.get("phrase_used") or ""))
+    known = {_stem(w) for w in _content_words(facts)}
+    held = [w for w in own if _known(_stem(w), known)]
+    if own and len(held) / len(own) < MIRROR_SHARE:
+        return (f"only {len(held)} of its {len(own)} own words are in {short}'s facts: "
+                + ", ".join(sorted(own - set(held))[:6]))
+    allowed = next((v for key, v in (prules.get("employer_domains") or {}).items()
+                    if company.lower().startswith(key.lower())), ())
+    for noun in inp.mirror.get("jd_domain") or ():
+        noun = str(noun).strip()
+        if noun and _has(noun, text) and not _held(noun, facts) and not any(
+                _has(noun, d) or _has(d, noun) for d in allowed):
+            return f"the domain \"{noun}\" is not work {short} touched"
+    return None
+
+
+def check_mirror(inp: Input, tstruct: docxio.Structure) -> tuple:
+    """mirror_honesty: a mirrored JD phrase may only sit on a bullet whose core fact is in the fact bank or
+    the confirmed facts. A phrase no longer on any bullet (a repair rewrote it) is reported as not covered, never a
+    failure. Info: per entry {responsibility, bullet_id, phrase_used, at: [job, bullet] | None, ok}."""
+    entries = [e for e in inp.mirror.get("mirrored") or () if isinstance(e, dict)]
+    out, info = [], []
+    for e in entries:
+        at = find_mirrored(tstruct, inp.base_structure, e)
+        why = mirror_problem(inp, tstruct, e, at) if at else None
+        info.append({"responsibility": str(e.get("responsibility") or ""), "bullet_id": str(e.get("bullet_id") or ""),
+                     "phrase_used": str(e.get("phrase_used") or ""), "at": list(at) if at else None,
+                     "ok": bool(at) and not why, "why": why or ("" if at else "phrase not on the bullet")})
+        if why:
+            out.append(Failure(5, "mirror_honesty", f"mirrored \"{e.get('phrase_used')}\" ({e.get('responsibility')}) "
+                                                     f"sits on {tstruct.jobs[at[0]]['company'].split(',')[0]} bullet "
+                                                     f"{at[1] + 1}, whose core fact is not in the fact bank: {why}. Fix: "
+                                                     f"take that phrase and its claim off role {at[0] + 1} bullet "
+                                                     f"{at[1] + 1}, say only what the fact bank says about that work, "
+                                                     "and count this responsibility as not covered"))
     return out, info
 
 
@@ -426,13 +641,17 @@ def check_ats(inp: Input, scores: dict | None) -> tuple:
                                            f"missing JD keywords: {', '.join(tail.get('missing') or [])[:300]}"))
     known = set((scores.get("found") or {}).get("known") or {})
     have = set((scores.get("found") or {}).get("tailored") or {})
-    mirror = rules.for_profile(inp.pid, inp.profile_rules)["jd_skills_allowed"]
+    prules = rules.for_profile(inp.pid, inp.profile_rules)
+    mirror = prules["jd_skills_allowed"]
     # with JD skills allowed, every REQUIRED JD hard skill must be on the resume (preferred ones are asked
     # for in the prompt and reported); otherwise only the required ones the person already lists
     wanted = [t["name"] for t in scores.get("terms") or [] if t.get("need") and (mirror or t["name"] in known)]
     uncovered = [t for t in wanted if t not in have]
     info["uncovered_known"] = uncovered
-    if uncovered:
+    # fixed skill rows keep their line counts and bullets only state fact-bank work, so a known skill MAY be added to
+    # a row (the prompt asks for it) but is never forced: listed on the result, not a failure
+
+    if uncovered and not prules.get("skill_rows_fixed"):
         what = "Required JD skills" if mirror else "JD keywords the person knows but"
         out.append(Failure(6, "ats_coverage", f"{what} the resume does not mention: "
                                               + ", ".join(uncovered) + " (add each to Skills and to one bullet)"))
@@ -504,6 +723,14 @@ def check_writing(inp: Input, tstruct: docxio.Structure) -> list:
         if extra:
             out.append(Failure(7, "period", "the base's bullets end without a period; bullet " + ", ".join(extra)
                                             + " must not end with one"))
+    out += _bullet_shape_problems(tstruct, prules)
+    keep = prules.get("summary_keep")
+    if keep:
+        want, got = _sentence_list(inp.base_structure.summary), _sentence_list(tstruct.summary)
+        lo_s, hi_s = keep
+        if want[lo_s - 1:hi_s] != got[lo_s - 1:hi_s]:
+            out.append(Failure(7, "summary_keep", f"summary sentences {lo_s}-{hi_s} must stay the base's word for "
+                                                  f"word: " + " ".join(want[lo_s - 1:hi_s])))
     sw = prules.get("summary_words")
     n = _words(tstruct.summary)
     if sw and not (sw[0] <= n <= sw[1]):
@@ -525,6 +752,65 @@ def check_writing(inp: Input, tstruct: docxio.Structure) -> list:
     loc = prules.get("location")
     if loc and loc not in tstruct.contact:
         out.append(Failure(7, "location", f"the contact line must keep the location {loc}"))
+    return out
+
+
+FROM_TO = re.compile(r"\bfrom\b(?:\s+[^\s.,;:!?]+){1,5}?\s+to\b", re.I)
+_PLAIN_BAD = (";", "—", "–", "(", ")")
+
+
+def _sentence_list(text: str) -> list:
+    return [x.strip() for x in SENTENCE_END.split((text or "").strip()) if x.strip()]
+
+
+def from_to_count(text: str) -> int:
+    return len(FROM_TO.findall(text or ""))
+
+
+def _bullet_shape_problems(tstruct: docxio.Structure, prules: dict) -> list:
+    """The bullet-shape rules: opening verbs unique across the resume, varied lengths, plain punctuation, at most N "from
+
+    X to Y" phrasings. Each message names its bullets as "bullet k of role j" so a repair can find them."""
+    out = []
+    bullets = [(j, k, b) for j, job in enumerate(tstruct.jobs) for k, b in enumerate(job["bullets"])]
+    if prules.get("verbs_unique"):
+        seen: dict = {}
+        for j, k, b in bullets:
+            verb = (b.split() or [""])[0].rstrip(",.").lower()
+            seen.setdefault(verb, []).append(f"bullet {k + 1} of role {j + 1}")
+        for verb, where in seen.items():
+            if verb and len(where) > 1:
+                out.append(Failure(7, "verbs_unique", f"the opening verb '{verb}' is used {len(where)} times ("
+                                                      + ", ".join(where) + "); every bullet opens with its own verb"))
+    short = prules.get("short_bullets")
+    if short:
+        limit, need = short
+        have = sum(1 for _, _, b in bullets if _words(b) <= limit)
+        if have < need:
+            longest = sorted(bullets, key=lambda x: -_words(x[2]))[:need - have]
+            out.append(Failure(7, "short_bullets", f"only {have} bullet(s) have {limit} words or fewer; at least "
+                                                   f"{need} must (vary the lengths): shorten "
+                                                   + ", ".join(f"bullet {k + 1} of role {j + 1}" for j, k, _ in longest)))
+    top, cap = (prules.get("bullet_words") or (0, 0))[1], prules.get("max_at_top")
+    if cap and top:
+        at_top = [(j, k) for j, k, b in bullets if _words(b) == top]
+        if len(at_top) > cap:
+            out.append(Failure(7, "at_top", f"{len(at_top)} bullets have exactly {top} words (at most {cap}): shorten "
+                                            + ", ".join(f"bullet {k + 1} of role {j + 1}" for j, k in at_top[cap:])))
+    if prules.get("bullet_plain"):
+        for j, k, b in bullets:
+            bad = [c for c in _PLAIN_BAD if c in b]
+            if bad:
+                out.append(Failure(7, "bullet_punct", f"bullet {k + 1} of role {j + 1} contains "
+                                                      f"{' '.join(repr(c) for c in bad)}; bullets use no semicolons, "
+                                                      f"em/en dashes or parentheses (hyphen ranges like 7-10 are fine)"))
+    cap = prules.get("max_from_to")
+    if cap is not None:
+        hits = [(j, k) for j, k, b in bullets for _ in range(from_to_count(b))]
+        if len(hits) > cap:
+            out.append(Failure(7, "from_to", f"{len(hits)} \"from X to Y\" phrasings (at most {cap}); say the others "
+                                             f"another way: " + ", ".join(f"bullet {k + 1} of role {j + 1}"
+                                                                          for j, k in dict.fromkeys(hits))))
     return out
 
 
@@ -606,9 +892,12 @@ def run_all(inp: Input) -> Report:
     ats_failures, ats_info = check_ats(inp, inp.scores)
     report.failures += ats_failures
     report.failures += check_writing(inp, tstruct)
+    mirror_failures, mirror_info = check_mirror(inp, tstruct) if getattr(inp, "mirror", None) else ([], [])
+    report.failures += mirror_failures
     visual_failures, visual_info = check_visual(inp, inp.pdf_path, lines)
     report.failures += visual_failures
     report.info = {"fit": fit_info, "honesty": honesty_info, "ats": ats_info, "visual": visual_info,
+                   **({"mirror": mirror_info} if mirror_info else {}),
                    "pages": info.pages, "producer": info.producer,
                    "overflow_lines": overflow_lines(inp, inp.pdf_path, info, visual_info.get("ink"))}
     report.failures.sort(key=lambda f: f.check)
