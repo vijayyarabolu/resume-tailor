@@ -77,7 +77,15 @@ MIGRATIONS = (("archived_at", "TEXT"),     # hidden from Queue / Ready, files ke
               ("downloaded_at", "TEXT"),  # last time a Download link fetched the PDF / .docx
               ("requeued_at", "TEXT"),    # a retry / regenerate is listed under the day it was queued again
               ("deleting_at", "TEXT"),    # Delete for good pressed; gone from every list, purged after the Undo grace
-              ("place_choices", "TEXT"))  # JSON ["City, ST", ...] the person picks from (needs_place)
+              ("place_choices", "TEXT"),  # JSON ["City, ST", ...] the person picks from (needs_place)
+              ("rev", "INTEGER NOT NULL DEFAULT 0"))   # bumped on every UPDATE (jobs_rev trigger)
+# The lean list (?lean=1, what a tracker polls) rebuilds a resume's view only when its row changed. Not every write
+# sets updated_at, so a trigger counts every UPDATE, and the covering index lets the check skip the JD and result
+# columns.
+REV_SETUP = ("CREATE TRIGGER IF NOT EXISTS jobs_rev AFTER UPDATE ON jobs FOR EACH ROW WHEN NEW.rev = OLD.rev "
+             "BEGIN UPDATE jobs SET rev = OLD.rev + 1 WHERE id = OLD.id; END;"
+             "CREATE INDEX IF NOT EXISTS jobs_revs ON jobs(profile, deleting_at, id, rev);")
+REVS_SQL = "SELECT id, rev FROM jobs WHERE profile = ? AND deleting_at IS NULL ORDER BY id DESC LIMIT ?"
 LIVE = ("queued", "generating", "checking", "waiting")
 FINISHED_EMPTY = ("cancelled", "failed")
 AUTO_ARCHIVE_H = 24
@@ -109,6 +117,7 @@ def connect(path=None, setup: bool = True) -> sqlite3.Connection:
     for name, kind in MIGRATIONS:
         if name not in have:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {kind}")
+    conn.executescript(REV_SETUP)
     return conn
 
 
@@ -192,6 +201,21 @@ def list_jobs(conn, profile: str | None = None, statuses=None, limit: int = 200,
         params += list(statuses)
     sql = "SELECT * FROM jobs" + (" WHERE " + " AND ".join(where) if where else "") + " ORDER BY id DESC LIMIT ?"
     return [dict(r) for r in conn.execute(sql, (*params, limit))]
+
+
+def revs(conn, profile: str, limit: int) -> list[tuple[int, int]]:
+    """(id, rev) of the person's listed jobs, newest first: what list_jobs would return, read from an index only."""
+    return [(r[0], r[1]) for r in conn.execute(REVS_SQL, (profile, limit))]
+
+
+def jobs_without_jd(conn, ids: list[int]) -> list[dict]:
+    """The rows of these jobs with every column but jd_text (the lean list never shows the JD)."""
+    cols = ", ".join(r["name"] for r in conn.execute("PRAGMA table_info(jobs)") if r["name"] != "jd_text")
+    out = []
+    for i in range(0, len(ids), 500):
+        part = ids[i:i + 500]
+        out += [dict(r) for r in conn.execute(f"SELECT {cols} FROM jobs WHERE id IN ({','.join('?' * len(part))})", part)]
+    return out
 
 
 QUEUE_ORDER = "ORDER BY priority DESC, id"     # first in, first out; "Move to top" jumps ahead

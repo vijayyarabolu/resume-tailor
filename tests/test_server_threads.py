@@ -69,15 +69,20 @@ class StartWarmsTheReadyListTest(unittest.TestCase):
     def tearDown(self):
         self.env.__exit__(None, None, None)
 
-    def test_start_reads_every_ready_resume_once(self):
-        # after a restart the first Resumes look took over 4 s reading every ready resume's files,
-        # and a tracker with a 4 s timeout called the app offline; the server now reads them once as it starts
+    def test_start_builds_every_resume_once(self):
+        # after a restart the first Resumes look took over 4 s reading every ready resume's files, and a tracker
+        # with a 4 s timeout called the app offline; the server now reads them once as it starts. It builds the
+        # whole lean list a tracker asks for (ready ones included), and an unchanged one is not rebuilt
+        server._LEAN.clear()
         ready = db.add_job(self.app.conn, "alex-rivera", "Acme", "ML Engineer", "Build models in Python. " * 10)
-        db.add_job(self.app.conn, "alex-rivera", "Beta", "Data Scientist", "Analyse data in SQL. " * 10)
+        other = db.add_job(self.app.conn, "alex-rivera", "Beta", "Data Scientist", "Analyse data in SQL. " * 10)
         self.app.conn.execute("UPDATE jobs SET status = 'ready' WHERE id = ?", (ready,))
-        with mock.patch.object(server, "_job_view") as view:
+        real = server._job_view
+        with mock.patch.object(server, "_job_view", side_effect=real) as view:
             server._warm()
-        self.assertEqual([c.args[0]["id"] for c in view.call_args_list], [ready])
+            self.assertEqual(sorted(c.args[0]["id"] for c in view.call_args_list), [ready, other])
+            server._warm()
+        self.assertEqual(view.call_count, 2)
 
 
 if __name__ == "__main__":

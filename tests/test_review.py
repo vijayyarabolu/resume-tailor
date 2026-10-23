@@ -115,13 +115,13 @@ class ReviewDbTests(unittest.TestCase):
         c = db.add_job(self.conn, "alex-rivera", "C", "R", JD_TEXT)
         db.cancel(self.conn, c)
         before = {k: v for k, v in db.get_job(self.conn, a).items() if k not in ("archived_at", "updated_at",
-                                                                               "restored_at")}
+                                                                               "restored_at", "rev")}   # rev: the lean-list counter
         db.archive(self.conn, a)
         batch = db.archive_many(self.conn, "cancelled_failed")
         self.assertEqual([j["id"] for j in db.archived(self.conn)], [c, a] if batch else [a])
         self.assertEqual(db.unarchive(self.conn, [a]), [a])
         after = {k: v for k, v in db.get_job(self.conn, a).items() if k not in ("archived_at", "updated_at",
-                                                                              "restored_at")}
+                                                                              "restored_at", "rev")}
         self.assertEqual(after, before)                        # status, files, Drive link: all as they were
         self.assertEqual(db.unarchive(self.conn, batch + [999]), batch)
         self.assertEqual(db.archived(self.conn), [])

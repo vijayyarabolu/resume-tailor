@@ -78,7 +78,9 @@ class WorkerTests(unittest.TestCase):
                                   and self.statuses([a, b]) == ["queued", "queued"], 5))
             pause = db.pause_of(self.conn, "alex-rivera")
             self.assertIn("usage limit", pause["reason"])
-            self.assertEqual(self.statuses([a, b]), ["queued", "queued"])         # nothing dropped
+            # nothing dropped: the pause is written first, then the job goes back to the queue (reading
+            # the statuses at once raced that second write and failed now and then)
+            self.assertTrue(_wait(lambda: self.statuses([a, b]) == ["queued", "queued"], 1.5))
             self.assertTrue(_wait(lambda: self.statuses([a, b]) == ["ready", "ready"], 15))
             self.assertIsNone(db.pause_of(self.conn, "alex-rivera"))
             self.assertEqual(calls, [a, a, b])                                    # a retried first, then b

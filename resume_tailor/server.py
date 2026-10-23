@@ -11,6 +11,7 @@ import mimetypes
 import os
 import re
 import secrets
+import sys
 import threading
 import time
 from functools import lru_cache
@@ -226,6 +227,39 @@ def _job_view(job: dict) -> dict:
     return out
 
 
+QUIET_POLLS = re.compile(r'"GET /api/(?:jobs\?[^ ]*lean=1|state)[^ ]* HTTP/[\d.]+" 2\d\d ')   # answered polls: no line
+LEAN_KEEP_S = 60     # a kept view is rebuilt at least this often (Outdated badge, file times)
+_LEAN: dict[int, tuple[tuple, float, dict]] = {}     # job id -> ((rev, step), built at, lean view)
+_LEAN_LOCK = threading.Lock()
+_LEAN_BUILDING: dict[str, threading.Lock] = {}       # one build per person at a time: a second asker waits, then reuses
+
+
+def lean_jobs(conn, pid: str) -> list[dict]:
+    """The lean list (every resume of the person, small result), newest first. A view is built again only when its
+    row changed (rev), its re-import step moved, or it is older than LEAN_KEEP_S."""
+    with _LEAN_LOCK:
+        building = _LEAN_BUILDING.setdefault(pid, threading.Lock())
+    with building:
+        return _lean_build(conn, pid)
+
+
+def _lean_build(conn, pid: str) -> list[dict]:
+    at = time.monotonic()
+    marks = [(jid, (rev, json.dumps(progress.get(jid)))) for jid, rev in db.revs(conn, pid, LEAN_LIMIT)]
+    with _LEAN_LOCK:
+        kept = {jid: _LEAN.get(jid) for jid, _ in marks}
+    stale = [jid for jid, key in marks if not kept[jid] or kept[jid][0] != key or at - kept[jid][1] > LEAN_KEEP_S]
+    built = {row["id"]: _lean(_job_view(row)) for row in db.jobs_without_jd(conn, stale)}
+    listed = {jid for jid, _ in marks}
+    with _LEAN_LOCK:
+        for jid, key in marks:
+            if jid in built:
+                _LEAN[jid] = (key, at, built[jid])
+        for jid in [j for j, kept in _LEAN.items() if kept[2].get("profile") == pid and j not in listed]:
+            del _LEAN[jid]                                  # deleted, purged or past LEAN_LIMIT: not kept forever
+        return [_LEAN[jid][2] for jid, _ in marks if jid in _LEAN]
+
+
 class _ThreadConn:
     """The calling thread's connection, for helpers made once and used from every handler thread (gdocs.Google)."""
 
@@ -300,6 +334,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def log_message(self, fmt, *args):
         line = fmt % args
+        if QUIET_POLLS.search(line):                  # a tracker's polls were 5,500 lines a day
+            return
         log.info("%s %s", self.address_string(), re.sub(r"token=[^&\s\"]+", "token=<redacted>", line))
 
     def finish(self):
@@ -371,6 +407,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         try:
             self._get()
+        except (BrokenPipeError, ConnectionResetError):   # the asker hung up first (a tracker's timeout, a closed tab)
+
+            log.info("GET %s: the asker went away before the answer", urlsplit(self.path).path)
         except Exception as err:                  # never drop the connection without an answer
             log.exception("GET %s failed", urlsplit(self.path).path)
             self._error(500, f"{type(err).__name__}: {err}"[:300])
@@ -414,8 +453,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/jobs":
             pid = (query.get("profile") or [None])[0]
             if (query.get("lean") or [""])[0] == "1":            # a tracker reads every resume, small
-                return self._json(200, {"ok": True, "jobs": [_lean(_job_view(j)) for j in
-                                                              db.list_jobs(self.app.conn, pid, limit=LEAN_LIMIT)]})
+                jobs = lean_jobs(self.app.conn, pid) if pid else [_lean(_job_view(j)) for j in
+                                                                  db.list_jobs(self.app.conn, None, limit=LEAN_LIMIT)]
+                return self._json(200, {"ok": True, "jobs": jobs})
             return self._json(200, {"ok": True, "jobs": [_job_view(j) for j in db.list_jobs(self.app.conn, pid)]})
         m = re.match(r"^/api/jobs/(\d+)$", path)
         if m:
@@ -864,12 +904,13 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def _warm() -> None:
-    """Read every ready resume's files once as the server starts (outdated.py caches them), so the first Resumes look
-    after a restart doesn't wait for it (cold, it took over 4 s, longer than a tracker's request timeout)."""
+    """Build every person's lean list once as the server starts (it reads each resume's files, which outdated.py
+    caches), so the first Resumes look after a restart doesn't wait for it (cold, it took over 4 s, longer than a
+    tracker's request timeout)."""
     conn = db.connect(setup=False)
     try:
-        for job in db.list_jobs(conn, statuses=("ready",), limit=1000):
-            _job_view(job)
+        for pid in profiles.ids():
+            lean_jobs(conn, pid)
     except Exception:                                    # a warm-up fault only means the first look waits
         log.exception("warming the ready resumes failed")
     finally:
@@ -901,9 +942,20 @@ def _purger(app: App) -> None:
         time.sleep(PURGE_EVERY_S)
 
 
+class QuietServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address):
+        """A client that hangs up between requests is one line, not a traceback (a tracker polling every few
+        seconds does this many times a day)."""
+        err = sys.exc_info()[1]
+        if isinstance(err, (BrokenPipeError, ConnectionResetError)):
+            log.info("%s hung up: %s", client_address[0], type(err).__name__)
+            return
+        super().handle_error(request, client_address)
+
+
 def make_server(app: App, port: int, host: str = "127.0.0.1") -> ThreadingHTTPServer:
     Handler.app = app
-    server = ThreadingHTTPServer((host, port), Handler)
+    server = QuietServer((host, port), Handler)
     server.daemon_threads = True
     return server
 
