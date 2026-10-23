@@ -1,7 +1,9 @@
 """SQLite queue. One row per tailoring job; events feed the SSE stream; pauses hold a person's queue after a
 usage limit. WAL mode so the server and the worker read and write at the same time."""
 import json
+import os
 import sqlite3
+import sys
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
@@ -100,10 +102,52 @@ def now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+# SQLite's locks (and a WAL's shared memory) do not cross a VM's shared folder or a network file system, so on Linux
+# the app refuses a DB on these mounts (a DB opened through a VM's shared folder ended up malformed)
+SHARED_MOUNTS = ("virtiofs", "9p", "fuse", "nfs", "nfs4", "cifs", "smbfs", "smb3", "vboxsf", "afpfs", "webdav",
+                 "fakeowner", "prl_fs", "vmhgfs")
+ALLOW_SHARED = "RESUME_TAILOR_ALLOW_SHARED_DB"
+
+
+class SharedDatabase(RuntimeError):
+    """The DB lives on a shared or network mount."""
+
+
+def _mounts() -> str:
+    try:
+        with open("/proc/mounts") as f:
+            return f.read()
+    except OSError:
+        return ""
+
+
+def mount_type(path, mounts: str):
+    """The file system type of the mount holding `path` (its longest mount point), from /proc/mounts text."""
+    target, best, kind = str(path), -1, None
+    for line in mounts.splitlines():
+        parts = line.split()
+        if len(parts) >= 3:
+            point = parts[1].rstrip("/") or "/"
+            if (point == "/" or target == point or target.startswith(point + "/")) and len(point) > best:
+                best, kind = len(point), parts[2]
+    return kind
+
+
+def _ensure_local(path) -> None:
+    if not sys.platform.startswith("linux") or os.environ.get(ALLOW_SHARED) == "1":
+        return
+    kind = mount_type(os.path.realpath(path), _mounts())
+    if kind and (kind in SHARED_MOUNTS or kind.startswith("fuse.")):
+        raise SharedDatabase(f"{path} is on a shared mount ({kind}), where SQLite's locks don't hold: set "
+                             f"RESUME_TAILOR_HOME to a folder on a local disk ({ALLOW_SHARED}=1 opens it anyway)")
+
+
+
 def connect(path=None, setup: bool = True) -> sqlite3.Connection:
     """setup=False: one more connection to a DB that is already set up (the server's per-thread ones)."""
     path = path or config.DB_PATH
     if str(path) != ":memory:":
+        _ensure_local(path)
         config.ensure_dirs()
     conn = sqlite3.connect(str(path), timeout=30, check_same_thread=False, isolation_level=None,
                            factory=Connection)

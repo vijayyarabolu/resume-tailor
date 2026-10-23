@@ -193,6 +193,9 @@ is installed. CI runs the same command on Ubuntu (`.github/workflows/ci.yml`).
   Data Engineer and AI/ML Engineer. Other fields should use a fixed `headline` or leave the title alone.
 - Locations are read as US-style "City, ST".
 - It's a local, single-user app. The token keeps other local users out, but don't put it on the internet.
+- Keep `~/.resume-tailor` on a local disk. SQLite's locks don't hold on a network file system or a VM's shared
+  folder, so on Linux the app refuses a database there (`RESUME_TAILOR_HOME` moves the folder).
+
 - The checks keep a resume honest to your fact bank. They can't tell whether the fact bank itself is true.
 
 ## License
