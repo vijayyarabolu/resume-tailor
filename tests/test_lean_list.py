@@ -106,15 +106,14 @@ class HangUpTests(unittest.TestCase):
         self.assertEqual(len(logs.output), 2)
         self.assertIn("500", logs.output[0])
 
-    def test_a_reset_between_requests_prints_no_traceback(self):
+    def test_a_reset_between_requests_prints_no_traceback(self):      # and no INFO line either: a closed tab
         err = io.StringIO()
-        with redirect_stderr(err), self.assertLogs("resume_tailor.server", logging.INFO) as logs:
+        with redirect_stderr(err), self.assertNoLogs("resume_tailor.server", logging.INFO):
             try:
                 raise ConnectionResetError(54, "Connection reset by peer")
             except ConnectionResetError:
                 server.QuietServer.handle_error(mock.Mock(), None, ("127.0.0.1", 53690))
         self.assertEqual(err.getvalue(), "")
-        self.assertEqual(len(logs.output), 1)
 
 
 if __name__ == "__main__":

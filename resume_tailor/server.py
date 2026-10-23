@@ -11,6 +11,7 @@ import mimetypes
 import os
 import re
 import secrets
+import sqlite3
 import sys
 import threading
 import time
@@ -945,13 +946,31 @@ def _purger(app: App) -> None:
         time.sleep(PURGE_EVERY_S)
 
 
+CHECKPOINT_S = 300
+
+
+def _checkpoints() -> None:
+    """The WAL copied back every few minutes (PASSIVE: never waits on a reader), so it stays small."""
+    while True:
+        time.sleep(CHECKPOINT_S)
+        try:
+            conn = db.connect(setup=False)
+            try:
+                db.checkpoint(conn)
+            finally:
+                conn.close()
+        except sqlite3.Error as err:
+            log.warning("WAL checkpoint skipped: %s", err)
+
+
 class QuietServer(ThreadingHTTPServer):
     def handle_error(self, request, client_address):
         """A client that hangs up between requests is one line, not a traceback (a tracker polling every few
         seconds does this many times a day)."""
         err = sys.exc_info()[1]
         if isinstance(err, (BrokenPipeError, ConnectionResetError)):
-            log.info("%s hung up: %s", client_address[0], type(err).__name__)
+            log.debug("%s hung up: %s", client_address[0], type(err).__name__)       # a closed tab is not news
+
             return
         super().handle_error(request, client_address)
 
@@ -980,6 +999,7 @@ def serve(lan: bool = False, port: int | None = None, with_worker: bool = True) 
     server = make_server(app, port, "0.0.0.0" if app.settings.get("allow_lan") else "127.0.0.1")
     threading.Thread(target=_purger, args=(app,), daemon=True, name="purge").start()
     threading.Thread(target=_warm, daemon=True, name="warm-ready").start()
+    threading.Thread(target=_checkpoints, daemon=True, name="wal-checkpoint").start()
     if with_worker and not worker.wake():                  # no worker process yet: run one in this process
         app.worker_thread = threading.Thread(target=_run_worker, args=(app,), daemon=True, name="worker")
         app.worker_thread.start()

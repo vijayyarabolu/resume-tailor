@@ -5,8 +5,10 @@ import os
 import sqlite3
 import sys
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from . import config
 
@@ -143,18 +145,55 @@ def _ensure_local(path) -> None:
 
 
 
+BUSY_TIMEOUT_MS = 30_000
+WAL_LIMIT_BYTES = 32 * 1024 * 1024
+CONNECT_TRIES = (0.2, 0.5, 1.0, 2.0)
+_SET_UP: set = set()                     # paths of DB files whose schema this process set up already
+SCHEMA_STAMP = 1 + len(MIGRATIONS)       # PRAGMA user_version once set up: a new file at the same path has 0
+_SET_UP_LOCK = threading.Lock()
+
+
+def _open(path) -> sqlite3.Connection:
+    """busy_timeout before anything; WAL is set only on a file not in WAL yet (asking on every connect
+    took a lock); synchronous=NORMAL (safe with WAL); the WAL is cut back after a checkpoint."""
+    conn = sqlite3.connect(str(path), timeout=BUSY_TIMEOUT_MS / 1000, check_same_thread=False, isolation_level=None,
+                           factory=Connection)
+    try:
+        conn.row_factory = sqlite3.Row
+        conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
+        if conn.execute("PRAGMA journal_mode").fetchone()[0].lower() != "wal":
+            conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute(f"PRAGMA journal_size_limit={WAL_LIMIT_BYTES}")
+        return conn
+    except BaseException:
+        conn.close()
+        raise
+
+
+def _open_retrying(path) -> sqlite3.Connection:
+    for wait in (*CONNECT_TRIES, None):
+        try:
+            return _open(path)
+        except sqlite3.OperationalError as err:
+            if wait is None or not ("locked" in str(err) or "busy" in str(err)):
+                raise
+            time.sleep(wait)
+
+
 def connect(path=None, setup: bool = True) -> sqlite3.Connection:
-    """setup=False: one more connection to a DB that is already set up (the server's per-thread ones)."""
+    """setup=False: one more connection to a DB that is already set up (the server's per-thread ones). The schema
+    is set up once per process and file (it ran on every event stream a browser opened)."""
     path = path or config.DB_PATH
     if str(path) != ":memory:":
         _ensure_local(path)
         config.ensure_dirs()
-    conn = sqlite3.connect(str(path), timeout=30, check_same_thread=False, isolation_level=None,
-                           factory=Connection)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA busy_timeout=30000")
-    if not setup:
+    conn = _open_retrying(path)
+    key = str(Path(path).resolve()) if str(path) != ":memory:" else None
+    with _SET_UP_LOCK:
+        known = key is not None and key in _SET_UP
+    # the stamp, not the inode, tells a replaced file: Linux hands a new file the inode the deleted one had
+    if not setup or (known and conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_STAMP):
         return conn
     conn.executescript(SCHEMA)
     have = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
@@ -162,7 +201,17 @@ def connect(path=None, setup: bool = True) -> sqlite3.Connection:
         if name not in have:
             conn.execute(f"ALTER TABLE jobs ADD COLUMN {name} {kind}")
     conn.executescript(REV_SETUP)
+    conn.execute(f"PRAGMA user_version={SCHEMA_STAMP}")
+    if key is not None:
+
+        with _SET_UP_LOCK:
+            _SET_UP.add(key)
     return conn
+
+
+def checkpoint(conn) -> tuple:
+    """The WAL copied back without waiting for readers (the server runs it every few minutes)."""
+    return tuple(conn.execute("PRAGMA wal_checkpoint(PASSIVE)").fetchone())
 
 
 class Connection(sqlite3.Connection):
