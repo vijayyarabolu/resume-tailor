@@ -53,7 +53,9 @@ class ApiRunnerTests(unittest.TestCase):
         self.assertEqual(sent["output_config"]["format"]["type"], "json_schema")
         summary = sent["output_config"]["format"]["schema"]["properties"]["summary"]
         self.assertEqual(summary, {"anyOf": [{"type": "string"}, {"type": "null"}]})   # no type lists
-        self.assertEqual(self.sent[0].headers["x-api-key"], KEY)
+        headers = self.sent[0].headers                             # anthropic 1.x: x-api-key; 2.x: a Bearer token
+        self.assertIn(KEY, (headers.get("x-api-key"), headers.get("authorization", "").removeprefix("Bearer ")))
+
         self.assertNotIn("tool_choice", sent)
 
     def test_no_key_waits_for_one(self):
