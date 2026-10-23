@@ -779,7 +779,3 @@ def hm_review(ctx: Context, st: State, runner, status: str) -> None:
                               "at": _now(), "model": getattr(res, "model", None)}
     db.update(ctx.conn, job["id"], result=json.dumps(st.result))
     db.event(ctx.conn, job["id"], ctx.prof.id, "note", f"hiring-manager pass: {out.get('score')}/10")
-
-
-def account_for(prof) -> dict:
-    return claude_runner.account(prof, config.settings())

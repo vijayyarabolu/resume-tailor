@@ -258,13 +258,6 @@ class Google:
                                 data=body, ctype=f"multipart/related; boundary={boundary}", timeout=EXPORT_TIMEOUT_S)
         return json.loads(raw or b"{}")
 
-    def update_doc(self, file_id: str, docx_bytes: bytes) -> dict:
-        """Replace a Google Doc's content from a .docx (used to simulate a hand edit in tests)."""
-        status, raw = self.call("PATCH", f"{self._url('upload')}/files/{file_id}", {"uploadType": "media",
-                                                                                   "fields": FILE_FIELDS},
-                                data=docx_bytes, ctype=DOCX, timeout=EXPORT_TIMEOUT_S)
-        return json.loads(raw or b"{}")
-
     def update_file(self, file_id: str, data: bytes, mime: str) -> dict:
         """New content for an existing file (an approved PDF replaced by its edited version)."""
         status, raw = self.call("PATCH", f"{self._url('upload')}/files/{file_id}", {"uploadType": "media",

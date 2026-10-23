@@ -696,7 +696,7 @@ class Handler(BaseHTTPRequestHandler):
         self._error(404, "unknown action")
 
     def _approve(self, job: dict) -> None:
-        conn, job_id = self.app.conn, job["id"]
+        job_id = job["id"]
         result = db.result_of(job)
         pdf = (result.get("files") or {}).get("pdf")
         if job["status"] != "ready" or not pdf:

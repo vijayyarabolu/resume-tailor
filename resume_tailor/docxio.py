@@ -83,13 +83,6 @@ class Structure:
                           "bullets": list(j["bullets"])} for j in self.jobs],
                 "education": list(self.education), "sections": list(self.sections)}
 
-    def body_text(self) -> str:
-        """Headline + summary + skills + bullets: the text a tailoring may change (honesty and ATS checks)."""
-        parts = [self.headline, self.summary] + [f"{s.category}: {s.items}" for s in self.skills]
-        for j in self.jobs:
-            parts += j["bullets"]
-        return "\n".join(parts)
-
     def full_text(self) -> str:
         parts = [self.name, self.headline, self.contact, self.summary]
         parts += [f"{s.category}: {s.items}" for s in self.skills]
