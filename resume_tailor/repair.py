@@ -36,7 +36,8 @@ _SKILL_REF = re.compile(r"skills(?: line)? '([^']+)'")
 _QUOTED = re.compile(r"'([^']+)'")
 _LINE_END = re.compile(r'"…(.*?)"')
 MAX_ATS_BULLETS = 2
-MULTI_BULLET = ("verbs_unique", "short_bullets", "at_top", "bullet_punct", "from_to")   # the bullet-shape checks
+MULTI_BULLET = ("verbs_unique", "short_bullets", "at_top", "bullet_punct", "from_to",   # the bullet-shape checks
+                "spare_swaps")
 
 
 @dataclass(frozen=True)
@@ -482,7 +483,7 @@ def plan(report: checks.Report, content: dict, base_measure, prules: dict, allow
                 _merge(items, _bullet_item(content, int(bm.group(2)), int(bm.group(1)), f.message))
         elif f.name == "summary_keep":
             _merge(items, _summary_item(content, f.message))
-        elif f.name in ("skill_row_lines", "dangling", "skill_rows", "skill_items"):
+        elif f.name in ("skill_row_lines", "dangling", "skill_rows", "skill_items", "skills_add_first"):
             idx = _skills_index(content, sm.group(1)) if sm else None
             targets = [idx] if idx else range(1, len(content.get("skills") or []) + 1)
             for i in targets:
@@ -491,7 +492,8 @@ def plan(report: checks.Report, content: dict, base_measure, prules: dict, allow
                         "numbers") and m:
             _merge(items, _bullet_item(content, int(m.group(2)), int(m.group(1)), f.message))
         elif f.name in ("banned", "em_dash", "em_dash_chain", "summary_words", "summary_sentences",
-                        "summary_start", "summary_title", "summary_contains") or (f.name == "numbers" and not m):
+                        "summary_start", "summary_title", "summary_contains", "summary_structure") or (
+                f.name == "numbers" and not m):
             if f.name == "numbers":
                 for hit in _items_for_terms(content, [n.split("'")[1] for n in honesty.get("bad_numbers") or []
                                                       if "'" in n], "the number '{term}' is not in the base resume "

@@ -210,3 +210,9 @@ ul.plain { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px }
 .chip.gap { height: auto; min-height: 22px; gap: 8px; font-weight: 550; color: var(--ink); background: color-mix(in oklab, var(--ink) 7%, var(--paper)) }
 .chip.gap button { min-height: 0; height: auto; padding: 1px 8px; font-size: var(--t-xs) }
 details.hm summary { font-weight: 600 }
+details.tailor summary { font-weight: 600 }
+ul.changes { list-style: none; padding-left: 0 }
+ul.changes li { margin: 4px 0 }
+.chip.swap { background: color-mix(in oklab, var(--good) 12%, var(--paper)); color: var(--good) }
+.chip.added { background: color-mix(in oklab, var(--good) 8%, var(--paper)); color: var(--good) }
+.chip.removed { background: color-mix(in oklab, var(--signal) 10%, var(--paper)); color: var(--signal) }

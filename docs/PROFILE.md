@@ -85,6 +85,37 @@ These are for a single base resume you want kept close to how you wrote it. All 
 | `[employer_domains]` | `"Lumen Freight" = ["logistics"]` | with `mirror_duties`: a job's domain noun goes on a role's bullet only when it's listed here or in that role's facts |
 
 
+### Deeper tailoring
+
+Three more rules for one master resume, all off by default. They are checked by machine like the others, and the
+review panel shows what changed under "Changes vs your base resume".
+
+| Key | Example | What it does |
+| --- | --- | --- |
+| `summary_structure` | `{ verb = "shipping", max_numbers = 2, min_employers = 2 }` | the summary is written fresh for each job: sentence 1 opens "<title> with <years> shipping" and the 2 or 3 kinds of work the job cares about most, then two proofs; at most 2 numbers besides the years and at least 2 employers named. Sentences 2 and 3 can't open the same way or copy a bullet. Not with `summary_keep` |
+| `summary_industries` | `["logistics", "healthcare"]` | the only words allowed after "across" in sentence 1 |
+| `skills_add_first` | `true` | with `skill_rows_fixed`: every job skill you have goes into its row, job skills first in the row. A row that then overflows loses a skill only from its `[drop_order]`, first out first, and never a locked skill or one the job names |
+| `locked_skills` | `["PyTorch", "SQL"]` | with `skills_add_first`: never removed |
+| `[drop_order]` | `"Machine Learning" = ["Time Series", "pandas"]` | with `skills_add_first`: per skills row, what goes first when the row overflows |
+| `spare_swaps` | `true` | a spare bullet from `facts.md` Part 3 (below) may take the place of a bullet in its own job when it covers the job clearly better |
+| `anchor_bullets` | `["Lumen Freight forecasting"]` | with `spare_swaps`: the employer and a few words of a bullet that is never replaced |
+| `max_swaps` | `2` | with `spare_swaps`: at most this many spare bullets per job (2 when not set) |
+
+Spare bullets are true bullets you have approved but that aren't on your base resume. They go in `facts.md` under a
+`## Part 3` heading, one employer per `###` heading:
+
+```markdown
+## Part 3: spare bullets
+
+### Lumen Freight (spare bullets)
+- L1 (evaluation, quality): Ran a 600 question evaluation set on every release of the dispatcher tool, lifting answer accuracy from 71% to 89%.
+- L2 (variant of the drift bullet; monitoring): Paged the on-call engineer within 10 minutes when input data shifted.
+```
+
+Each line is `- <id> (<what it covers>): <the bullet>`. "variant of X" or "replaces X or Y" in the brackets means the
+spare may only take the place of that bullet. With `fact_bank_numbers` a number may come from Part 3 too. A spare
+can't go into another job, and its numbers can't be stated by a second bullet.
+
 A file that doesn't parse is refused on save with the line that is wrong, and the old file stays.
 
 ## profile.toml

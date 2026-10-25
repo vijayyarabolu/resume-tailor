@@ -33,6 +33,9 @@ coverage before and after, so I can tell quickly whether a resume is worth sendi
 - The PDF is checked against your base resume drawn by the same engine. Failures are fixed cheaply first (no
   Claude call), then Claude gets only the failing lines back with the rule each one breaks.
 - You review it next to the base: every changed word is marked, with Claude's notes and the ATS score.
+- Optional stricter rules for one master resume: a summary written fresh for each job, the job's skills added to
+  their rows first (a row is trimmed only in the order you set), and approved spare bullets swapped in where they
+  fit the job better. See [docs/PROFILE.md](docs/PROFILE.md).
 - "Fix with note" changes one thing you name in plain words. A skill or number the note states becomes yours for
   later resumes too.
 - Approve saves the PDF to your Google Drive. "Open as Google Doc" lets you edit by hand, and "Get my Doc edits"

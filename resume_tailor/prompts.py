@@ -4,7 +4,7 @@ exact failures of the previous attempt). The fact bank is never rewritten; the c
 answer has to be shaped so Python can fill the base .docx."""
 import json
 
-from . import rules
+from . import rules, skillrules
 
 SCHEMA = {
     "type": "object",
@@ -56,6 +56,20 @@ MIRROR_PROPS = {                                  # rules.toml mirror_duties: th
 }
 MIRROR_SCHEMA = {**SCHEMA, "required": SCHEMA["required"] + list(MIRROR_PROPS),
                  "properties": {**SCHEMA["properties"], **MIRROR_PROPS}}
+_ROW_ITEMS = {"type": "array", "items": {"type": "object", "additionalProperties": False, "required": ["row", "items"],
+                                         "properties": {"row": {"type": "string"},
+                                                        "items": {"type": "array", "items": {"type": "string"}}}}}
+TAILOR_PROPS = {                                  # rules.toml spare_swaps / skills_add_first: what changed and where
+    "swaps": {"type": "array", "items": {"type": "object", "additionalProperties": False,
+                                         "required": ["job", "out_bullet", "spare_id", "reason"],
+                                         "properties": {"job": {"type": "string"},
+                                                        "out_bullet": {"type": "string",
+                                                                       "description": "the base bullet id, e.g. 1.5"},
+                                                        "spare_id": {"type": "string"},
+                                                        "reason": {"type": "string"}}}},
+    "skills_added": _ROW_ITEMS,
+    "skills_removed": _ROW_ITEMS,
+}
 MAX_JD_CHARS = 14000
 REPAIR_JD_CHARS = 6000
 
@@ -98,7 +112,15 @@ def _skill_budget(base_structure, measure) -> list:
     return lines
 
 
-def _ats_block(scores: dict | None, known: set, mirror: bool = False, fixed_rows: bool = False) -> str:
+def _owned_found(scores: dict) -> set:
+    """JD terms the keyword model found in the person's own texts: the base resumes, known skills, the fact bank."""
+    found = scores.get("found") or {}
+    return {t for key, d in found.items() if key not in ("tailored", "jd")
+            and not key.startswith(("era_job_", "skills_row_")) for t in d}
+
+
+def _ats_block(scores: dict | None, known: set, mirror: bool = False, fixed_rows: bool = False,
+               add_first: bool = False) -> str:
     if not scores:
         return "(ATS keywords unavailable)"
     terms = scores.get("terms") or []
@@ -109,7 +131,17 @@ def _ats_block(scores: dict | None, known: set, mirror: bool = False, fixed_rows
            f"Required JD keywords ({len(need)}): " + ", ".join(need),
            f"Preferred JD keywords ({len(nice)}): " + ", ".join(nice)]
     known_wanted = [n for n in need + nice if n in known]
-    if fixed_rows:      # allowed, never forced; a bullet only names work the fact bank supports
+    if add_first:       # rules.toml skills_add_first: trim only by the row's [drop_order]
+        owned = set(known_wanted) | _owned_found(scores)
+        wanted = [n for n in need + nice if n in owned]
+        out.append("Of these, the person owns (in the base resumes, known skills or the fact bank; SKILLS: ADD FIRST: "
+                   "every one not on the page yet goes into the row where it belongs, JD skills first in the row; a "
+                   "bullet names one only where the fact bank supports that work): " + (", ".join(wanted) or "none"))
+        gaps = [n for n in need + nice if n not in owned]
+        if gaps:
+            out.append("Every other JD keyword is a Gap the person does not have: never add it to Skills or a bullet, "
+                       "not even as a near synonym: " + ", ".join(gaps))
+    elif fixed_rows:    # allowed, never forced; a bullet only names work the fact bank supports
         out.append("Of these, the person owns (known skills; you MAY add one to the fitting Skills row when the row "
                    "keeps its line count, and to a bullet only where the fact bank supports that work): "
                    + (", ".join(known_wanted) or "none"))
@@ -212,11 +244,14 @@ def build(profile, base, measure, jd_text: str, company: str, role: str, scores:
         jd_text[:MAX_JD_CHARS],
         "",
         "=== ATS KEYWORDS (the keyword model's reading of this JD) ===",
-        _ats_block(scores, known, bool(prules.get("jd_skills_allowed")), bool(prules.get("skill_rows_fixed"))),
+        _ats_block(scores, known, bool(prules.get("jd_skills_allowed")), bool(prules.get("skill_rows_fixed")),
+                   bool(prules.get("skills_add_first"))),
         "",
     ]
     if prules.get("mirror_duties"):
         parts += _mirror_lines(structure, prules)
+    if prules.get("spare_swaps") or prules.get("skills_add_first"):
+        parts += _tailor_lines(structure, prules, skillrules.for_rules(prules, profile.fact_bank))
     if note:
         parts += ["=== INSTRUCTION FROM THE USER FOR THIS RUN ===", note, ""]
     if failures:
@@ -230,14 +265,22 @@ def build(profile, base, measure, jd_text: str, company: str, role: str, scores:
         "gaps: [unfixable gaps, or empty], added_from_jd: [JD skills you added that are not in the base or known "
         "skills, or empty]"
         + ("; jd_responsibilities, jd_domain, mirrored: [{responsibility, bullet_id, phrase_used}], unmatched "
-           "(see JD RESPONSIBILITIES)}." if prules.get("mirror_duties") else "}."),
+           "(see JD RESPONSIBILITIES)" if prules.get("mirror_duties") else "")
+        + ("; swaps: [{job, out_bullet, spare_id, reason}], skills_added: [{row, items}], skills_removed: [{row, "
+           "items}] (see SPARE BULLETS AND SKILLS BY ROW)}."
+           if prules.get("spare_swaps") or prules.get("skills_add_first") else "}."),
     ]
     return "\n".join(parts)
 
 
 def schema_for(prules: dict) -> dict:
-    """The full round's answer schema: with rules.toml `mirror_duties` it carries the mirrored responsibilities."""
-    return MIRROR_SCHEMA if prules.get("mirror_duties") else SCHEMA
+    """The full round's answer schema: with rules.toml `mirror_duties` it carries the mirrored responsibilities, with
+    `spare_swaps` or `skills_add_first` the swaps and the skills added and removed by row."""
+    out = MIRROR_SCHEMA if prules.get("mirror_duties") else SCHEMA
+    if prules.get("spare_swaps") or prules.get("skills_add_first"):
+        out = {**out, "required": out["required"] + list(TAILOR_PROPS),
+               "properties": {**out["properties"], **TAILOR_PROPS}}
+    return out
 
 
 def _mirror_lines(structure, prules: dict) -> list:
@@ -258,7 +301,7 @@ def _mirror_lines(structure, prules: dict) -> list:
         "character for character)} in mirrored. A bullet carries at most one mirrored phrase. When no bullet's real "
         "work matches, put the responsibility in unmatched and leave it out of the resume.",
         "3. Rules: no new claims, projects, tools or numbers ("
-        + ("numbers only from the base resume and the fact bank above its Part 2" if prules.get("fact_bank_numbers") else
+        + ("numbers only from the base resume and " + _fact_numbers(prules) if prules.get("fact_bank_numbers") else
            "numbers only from the base resume and the fact bank")
         + "). A domain noun goes on a bullet only where that job's real work touched the domain ("
         + (domains or "per the fact bank") + "); a freight company's work fits \"logistics\", not \"healthcare\". "
@@ -273,9 +316,36 @@ def _mirror_lines(structure, prules: dict) -> list:
     ]
 
 
+def _tailor_lines(structure, prules: dict, sr) -> list:
+    """The spare bullets by job (ids from facts.md Part 3), the anchors, and how swaps and skill changes come back.
+    Python reads the swaps from the page and checks them (tailorchecks)."""
+    out = ["=== SPARE BULLETS AND SKILLS BY ROW (same answer, checked by machine) ==="]
+    if prules.get("spare_swaps"):
+        out.append(f"A spare may replace one bullet in its OWN job when it covers the JD clearly better (at most "
+                   f"{sr.max_swaps} per job; never an anchor: {', '.join(sr.anchors) or 'none'}; a \"variant of X\" "
+                   f"spare replaces only X). It keeps its facts and numbers and may take JD wording. Base bullet ids "
+                   f"are job.bullet, as 1.2 for the second bullet of the first job.")
+        for j, job in enumerate(structure.jobs, 1):
+            mine = sr.spares_of(job["company"])
+            if mine:
+                out.append(f"Spares for {job['company'].split(',')[0]} (job {j}):")
+                out += [f"- {s.id} ({s.tags}): {s.text}" for s in mine]
+        out.append("Return swaps: [{job (company), out_bullet (the base id it replaced, e.g. \"1.5\"), spare_id, "
+                   "reason (a few words: what the JD stresses)}] for every spare used; [] when none.")
+    if prules.get("skills_add_first"):
+        out.append("Return skills_added and skills_removed: [{row (the row name), items}] for each row that gained or "
+                   "lost a skill; [] when none.")
+    return out + [""]
+
+
+def _fact_numbers(prules: dict, bank: str = "the fact bank") -> str:
+    """Where a number may come from with fact_bank_numbers: Part 1 of facts.md, and Part 3 with spare bullets."""
+    return f"{bank} above its Part 2" + (" or in a spare bullet (its Part 3)" if prules.get("spare_swaps") else "")
+
+
 def _numbers_line(prules: dict) -> str:
     if prules.get("fact_bank_numbers"):
-        return ("- Every number must already appear in this base resume or the FACT BANK above its Part 2, unchanged. "
+        return (f"- Every number must already appear in this base resume or {_fact_numbers(prules, 'the FACT BANK')}, unchanged. "
                 "The fact bank's Part 2 (interview details) may shape wording but adds NO number. No new metrics, no "
                 "rounding up.")
     return "- Every number must already appear in the base resumes or the fact bank, unchanged. No new metrics."
@@ -288,12 +358,33 @@ def _shape_lines(prules: dict) -> list:
         lo, hi = prules["summary_keep"]
         out.append(f"- Summary: only sentence 1 may adapt its focus words to the JD; sentences {lo}-{hi} stay the "
                    f"base's word for word.")
+    if prules.get("summary_structure"):
+        spec = prules["summary_structure"]
+        opening = " ".join(x for x in (prules.get("summary_start") or "<title> with <years>", spec.get("verb")) if x)
+        industries = ", ".join(prules.get("summary_industries") or ())
+        out.append("- Summary: written fresh for THIS JD (never the base's sentences): sentence 1 opens "
+                   f"\"{opening}\" + the 2 or 3 kinds of work this JD cares about most"
+                   + (f" + \"across\" + industries from: {industries}" if industries else "")
+                   + ", then 2 proofs"
+                   + (f"; at most {spec['max_numbers']} numbers besides the years" if spec.get("max_numbers") is not None
+                      else "")
+                   + (f"; at least {spec['min_employers']} employer(s) named" if spec.get("min_employers") else "")
+                   + "; sentences 2 and 3 open differently and never repeat a bullet.")
     if prules.get("skill_rows_fixed"):
         out += ["- Bullets: you may reorder bullets WITHIN a job (strongest match first) and reword them with the JD's "
-                "exact terms only for work the base or fact bank supports. Never a new tool, metric or claim.",
+                "exact terms only for work the base, fact bank or spare bullets support. Never a new tool, metric or "
+                "claim.",
                 "- Skills rows keep their names, order and rendered line counts; no row may end with one dangling "
-                "word on its last line. Reorder the items inside a row; never drop or rename a base skill item "
-                "(an allowed JD skill joins a row only when the row still keeps its line count)."]
+                "word on its last line. "
+                + ("SKILLS: ADD FIRST: put every JD skill the person has into its row, JD skills first, the rest in "
+                   "base order; only when the row overflows, remove the first skill of that row's DROP ORDER ("
+                   + ("; ".join(f"{k}: {', '.join(v)}" for k, v in (prules.get("drop_order") or {}).items())
+                      or "none given, so remove nothing")
+                   + ") the JD does not mention, one at a time; never a LOCKED skill ("
+                   + (", ".join(prules.get("locked_skills") or ()) or "none") + ") or a skill the JD names."
+                   if prules.get("skills_add_first") else
+                   "Reorder the items inside a row; never drop or rename a base skill item (an allowed JD skill "
+                   "joins a row only when the row still keeps its line count).")]
     if prules.get("verbs_unique"):
         out.append("- Every bullet's opening verb differs from every other bullet's, across the whole resume.")
     if prules.get("short_bullets"):
@@ -345,7 +436,7 @@ def _rule_lines(prules: dict, measure, structure, base_id: str = "") -> list:
     out = [f"- A bullet fills exactly 2 rendered lines: {int(cpl * 1.3)} to {int(cpl * 2 - 6)} characters "
            f"(about {cpl:.0f} per line), {hard[0]} to {hard[1]} words counted by machine. A last line under a fifth "
            f"of the width is a widow and fails; a third line fails.",
-           ("- Every number must already be in this base resume or the fact bank above its Part 2. No new metrics, tools, "
+           (f"- Every number must already be in this base resume or {_fact_numbers(prules)}. No new metrics, tools, "
             if prules.get("fact_bank_numbers") else
             "- Every number must already be in the base resume or the fact bank. No new metrics, tools, ")
            + "employers or dates. Skills and tools: only the base resumes and KNOWN SKILLS"

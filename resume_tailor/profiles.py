@@ -62,10 +62,14 @@ class Profile:
 
     @property
     def fact_bank_resume(self) -> str:
-        """facts.md up to a '## Part 2' heading. With rules.toml `fact_bank_numbers` a number on the page must come from
-        here or the base resume; Part 2 (interview-only facts) shapes wording only."""
+        """facts.md up to a '## Part 2' heading, plus Part 3 (the spare bullets) when there is one. With rules.toml
+        `fact_bank_numbers` a number on the page must come from here or the base resume; Part 2 (interview-only facts)
+        shapes wording only."""
         cut = re.search(r"^## Part 2\b", self.fact_bank, re.M)
-        return self.fact_bank[:cut.start()] if cut else self.fact_bank
+        if not cut:
+            return self.fact_bank
+        rest = re.search(r"^## Part 3\b", self.fact_bank[cut.end():], re.M)
+        return self.fact_bank[:cut.start()] + (self.fact_bank[cut.end() + rest.start():] if rest else "")
 
     def base(self, base_id: str | None):
         return next((b for b in self.bases if b.id == base_id), None)

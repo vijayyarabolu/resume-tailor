@@ -89,6 +89,7 @@ class Input:
     fact_bank: str = ""               # facts.md above "## Part 2" (fact_bank_numbers: numbers from here and this base)
     mirror: dict = field(default_factory=dict)   # the answer's mirrored / jd_domain (tailoring rounds only)
     fact_bank_all: str = ""           # the whole facts.md (Part 2 shapes wording, never new numbers)
+    answer: dict = field(default_factory=dict)   # the answer's swaps / skills_added / skills_removed (tailorchecks)
 
 
 def job_rules(inp: "Input") -> dict:
@@ -324,7 +325,8 @@ def check_layout(inp: Input, tstruct: docxio.Structure, lines: list | None = Non
         got, base = [s.category for s in tstruct.skills], [s.category for s in inp.base_structure.skills]
         if got != base:
             out.append(Failure(2, "skill_rows", f"skill rows are {got}; they must stay the base's, in order: {base}"))
-        out += skill_item_problems(inp.base_structure, tstruct)
+        if not prules.get("skills_add_first"):              # with skills_add_first the [drop_order] decides removals
+            out += skill_item_problems(inp.base_structure, tstruct)
     if lines:
         out += [Failure(2, "date_wrap", m) for m in date_problems(lines, tstruct)]
     return out
@@ -425,7 +427,7 @@ def check_honesty(inp: Input, tstruct: docxio.Structure, scores: dict | None) ->
     tailored = set(found.get("tailored") or {})
     allowed = set()
     for key, d in found.items():
-        if key not in ("tailored", "jd") and not key.startswith("era_job_"):
+        if key not in ("tailored", "jd") and not key.startswith(("era_job_", "skills_row_")):
             allowed |= set(d)
     jd_terms = set((scores or {}).get("jd_found") or {})
     known_names = {squash(k) for k in inp.known_skills}          # known_skills.txt itself (the lexicon scan of
@@ -896,8 +898,12 @@ def run_all(inp: Input) -> Report:
     report.failures += mirror_failures
     visual_failures, visual_info = check_visual(inp, inp.pdf_path, lines)
     report.failures += visual_failures
+    from . import tailorchecks                                # (it imports this module)
+    tailor_failures, tailor_info = tailorchecks.run(inp, tstruct)
+    report.failures += tailor_failures
     report.info = {"fit": fit_info, "honesty": honesty_info, "ats": ats_info, "visual": visual_info,
                    **({"mirror": mirror_info} if mirror_info else {}),
+                   **({"tailor": tailor_info} if tailor_info else {}),
                    "pages": info.pages, "producer": info.producer,
                    "overflow_lines": overflow_lines(inp, inp.pdf_path, info, visual_info.get("ink"))}
     report.failures.sort(key=lambda f: f.check)
@@ -905,7 +911,12 @@ def run_all(inp: Input) -> Report:
 
 
 def era_texts(structure: docxio.Structure, pid: str, profile_rules: dict | None = None) -> dict:
-    """{'era_job_<j>': bullets text} for the jobs the era rule covers (scored by the bridge as extra texts)."""
+    """{'era_job_<j>': bullets text} for the jobs the era rule covers (scored by ats.score as extra texts), plus
+    {'skills_row_<i>': row items} when the person's rules add JD skills by row (skills_add_first: a missing JD skill's
+    row is the one whose skills share its lexicon category)."""
     prules = rules.for_profile(pid, profile_rules)
-    return {f"era_job_{j}": "\n".join(job["bullets"]) for j, job in enumerate(structure.jobs)
-            if rules.is_era_job(job["company"], prules)}
+    out = {f"era_job_{j}": "\n".join(job["bullets"]) for j, job in enumerate(structure.jobs)
+           if rules.is_era_job(job["company"], prules)}
+    if prules.get("skills_add_first"):
+        out.update({f"skills_row_{i}": s.items for i, s in enumerate(structure.skills)})
+    return out

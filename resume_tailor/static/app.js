@@ -513,6 +513,17 @@
     const yes = (v, a, b) => v ? `✓ ${a}` : `✗ ${b}`;
     return `<details class="hm"><summary>Hiring manager: ${esc(String(h.score ?? '?'))}/10 · ${yes(h.reads_human, 'reads human', 'reads machine-made')} · ${yes(h.clear_fit, 'clear fit', 'fit not clear')}</summary><ul>${(h.notes || []).map(x => `<li>${esc(x)}</li>`).join('')}</ul><p class="small muted">A report only: it changed nothing.</p></details>`;
   }
+  // with rules.toml spare_swaps / skills_add_first: each spare bullet that went in (read from the page by Python, with
+  // Claude's reason) and the skills added or removed per row; no approval step, the tags only say what changed
+  function tailorBlock(res) {
+    const t = res.tailor;
+    if (!t) return '';
+    const swaps = (t.swaps || []).map(s => `<li><span class="chip swap">⇄ Spare ${esc(s.spare_id)} in</span> ${esc(s.job)} bullet ${esc(String(s.in_at).split('.')[1] || '')}${s.out_bullet ? ` in place of base bullet ${esc(String(s.out_bullet).split('.')[1])}` : ''}${s.reason ? `: ${esc(s.reason)}` : ''}<div class="small muted">${esc(s.tags || '')}</div></li>`);
+    const rows = (obj, cls, glyph, word) => Object.entries(obj || {}).map(([row, items]) => `<li><span class="chip ${cls}">${glyph} ${word}</span> ${esc(items.join(', '))} <span class="small muted">(${esc(row)})</span></li>`);
+    const items = [...swaps, ...rows(t.skills_added, 'added', '＋', 'Added'), ...rows(t.skills_removed, 'removed', '✕', 'Removed')];
+    const missing = (t.missing_jd || []).length ? `<p class="small muted">JD skills you have that are not on the page: ${esc(t.missing_jd.join(', '))}</p>` : '';
+    return `<details class="tailor" open><summary>Changes vs your base resume${(t.swaps || []).length ? ` · ${t.swaps.length} spare bullet${t.swaps.length === 1 ? '' : 's'}` : ''}</summary>${items.length ? `<ul class="changes">${items.join('')}</ul>` : '<p class="small muted">No spare bullets and no skills added or removed.</p>'}${missing}</details>`;
+  }
   function panelDetails(res, id) {
     const ats = res.ats ? `<div class="score"><span>ATS</span><b>${res.ats.base_pct}%</b><span>base →</span><b>${res.ats.tailored_pct}%</b><span class="muted small">${esc(res.ats.vendor || '')}</span></div>` : '';
     const added = (res.added_from_jd || []).length ? `<p><b>Added from JD:</b> ${res.added_from_jd.map(esc).join(', ')}</p>` : '';
@@ -521,7 +532,7 @@
     const notes = (res.change_notes || []).length ? `<details><summary>Change notes</summary><ul>${res.change_notes.map(x => `<li>${esc(x)}</li>`).join('')}</ul></details>` : '';
     const attempts = (res.attempts || []).map(a => `<li>${a.kind && a.kind !== 'full' ? a.kind + ' ' : 'attempt '}${a.n}: ${a.duration_s}s, ${esc(a.model || '')}${a.cost_usd != null ? ', $' + Number(a.cost_usd).toFixed(2) : ''}${a.usage && a.usage.output_tokens ? ', ' + a.usage.output_tokens + ' out tokens' : ''}${a.failures.length ? ': ' + esc(a.failures.join('; ').slice(0, 300)) : ', passed'}</li>`).join('');
     const diff = res.diff ? diffBody(res.diff) : '';
-    return `${ats}${added}${gaps}${hm}${review}${notes}<details><summary>Attempts (${(res.attempts || []).length})</summary><ul>${attempts}</ul></details>${diff}`;
+    return `${ats}${added}${gaps}${tailorBlock(res)}${hm}${review}${notes}<details><summary>Attempts (${(res.attempts || []).length})</summary><ul>${attempts}</ul></details>${diff}`;
   }
   function diffBody(d) {
     return `<div class="diff"><h4>Headline</h4>${diffHtml(d.headline)}<h4>Summary</h4>${diffHtml(d.summary)}<h4>Skills</h4>${d.skills.map(s => `<div class="pair"><b>${esc(s.category)}:</b> ${diffHtml(s.items).replace(/^<div class="pair[^>]*>|<\/div>$/g, '')}</div>`).join('')}${d.jobs.map(job => `<h4>${esc(job.company)} · ${esc(job.title)} · ${esc(job.dates)}</h4>${job.bullets.map(diffHtml).join('')}`).join('')}</div>`;

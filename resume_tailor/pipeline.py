@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from . import (ats, basefit, changes, checks, claude_runner, config, confirmed, db, diff, docxio, pdfx, places,
-               profiles, prompts, render, repair, rules, versions)
+               profiles, prompts, render, repair, rules, skillrules, tailorchecks, versions)
 
 log = logging.getLogger(__name__)
 _MEASURES: dict = {}
@@ -100,13 +100,21 @@ def _resume_entries(prof, extra_text: str | None = None, families=()) -> list:
     return out
 
 
+def _facts_text(prof) -> dict:
+    """With skills_add_first a JD skill the fact bank names (Part 1 or Part 3) is one the person owns, so the prompt
+    offers it and the honesty check accepts it; a JD skill named nowhere stays a Gap."""
+    if not rules.for_profile(prof.id, prof.rules).get("skills_add_first") or not prof.fact_bank:
+        return {}
+    return {"facts": prof.fact_bank_resume}
+
+
 def _score(prof, job: dict, extra_text: str | None, era: dict | None = None, families=()) -> dict | None:
     """The keyword model's scores (ats.py) for every base and, when given, the tailored text. The tailored text
     carries its base's title families so a tie between bases breaks the same way for it."""
     try:
         return ats.score(job["jd_text"], _resume_entries(prof, extra_text, families), title=job["role"],
                          company=job["company"], jd_url=job.get("jd_url"), profile_years=prof.years,
-                         extra_texts={"known": prof.known_text(), **(era or {})})
+                         extra_texts={"known": prof.known_text(), **_facts_text(prof), **(era or {})})
     except Exception as err:              # a scoring fault must not lose the job: the ATS check reports it
         log.warning("job %s: scoring failed: %s", job["id"], err)
         return None
@@ -226,6 +234,13 @@ def build_and_check(ctx: Context, content: dict, folder: Path, files: dict, extr
     job, prof, base = ctx.job, ctx.prof, ctx.base
     if lock:
         content = locked_headline(content, base, ctx.prules)
+        if ctx.prules.get("skills_add_first"):              # trim only by [drop_order], JD skills first in each row
+            master, jd = base.structure.as_content(), job.get("jd_text") or ""
+            jd_found = (ctx.scores0 or {}).get("jd_found")
+            content = tailorchecks.drop_by_order(content, master, skillrules.for_rules(ctx.prules, prof.fact_bank),
+                                                 jd, jd_found)
+            content = tailorchecks.merge_same(content, master, jd, jd_found)
+            content = tailorchecks.jd_first(content, master, jd, jd_found)
     place = rules.contact_location(ctx.prules)                   # the job's city on the contact line
     content = {**content, "contact_location": place} if place else content
     trim = {**ctx.fit.trim}
@@ -256,7 +271,7 @@ def build_and_check(ctx: Context, content: dict, folder: Path, files: dict, extr
     files["pdf"] = str(pdf_path)
     if on_step:                                                  # the Re-import busy line follows the steps
         on_step("checking")
-    report = check_files(ctx, docx_path, pdf_path, tailored, {k: content.get(k) for k in ("mirrored", "jd_domain")})
+    report = check_files(ctx, docx_path, pdf_path, tailored, answer_keys(content))
     _write(folder / "checks.json", report.as_dict())
     try:
         files["png"] = str(pdfx.png(pdf_path, folder / "page-1", ctx.settings.get("pdf_dpi", 110)))
@@ -265,16 +280,27 @@ def build_and_check(ctx: Context, content: dict, folder: Path, files: dict, extr
     return Built(report, tailored, engine, files)
 
 
+MIRROR_KEYS = ("mirrored", "jd_domain")                              # rules.toml mirror_duties
+TAILOR_KEYS = ("swaps", "skills_added", "skills_removed")            # rules.toml spare_swaps / skills_add_first
+
+
+def answer_keys(content: dict | None) -> dict:
+    """The parts of Claude's answer the checks read besides the resume itself."""
+    return {k: (content or {}).get(k) for k in MIRROR_KEYS + TAILOR_KEYS}
+
+
 def check_files(ctx: Context, docx_path: Path, pdf_path: Path, struct, mirror: dict | None = None) -> checks.Report:
-    """The 8 checks, with today's rules, on a .docx + PDF already made (no render, no Claude). mirror: the answer's
-    mirrored responsibilities, checked when the person's rules mirror them (rules.toml mirror_duties)."""
+    """The 8 checks, with today's rules, on a .docx + PDF already made (no render, no Claude). mirror: answer_keys()
+    of the answer: its mirrored responsibilities, checked when the person's rules mirror them (rules.toml
+    mirror_duties), and its declared swaps, which give the swap tags their reasons."""
     job, prof, base = ctx.job, ctx.prof, ctx.base
     scores = _score(prof, job, struct.full_text(), checks.era_texts(struct, prof.id, prof.rules), base.families)
-    mirror = mirror if ctx.prules.get("mirror_duties") and mirror else {}
+    answer = {k: (mirror or {}).get(k) for k in TAILOR_KEYS if (mirror or {}).get(k)}
+    mirror = {k: (mirror or {}).get(k) for k in MIRROR_KEYS} if ctx.prules.get("mirror_duties") and mirror else {}
     inp = checks.Input(prof.id, base.structure, ctx.base_doc, ctx.measure, docx_path, pdf_path, job["jd_text"],
                        prof.known_skills, scores, base.id, [b.text for b in prof.bases], prof.skill_text, prof.rules,
                        job.get("role") or "", job.get("location") or "", tuple(ctx.notes), prof.fact_bank_resume,
-                       mirror, prof.fact_bank)
+                       mirror, prof.fact_bank, answer)
     return checks.run_all(inp)
 
 
@@ -297,7 +323,20 @@ def _result_fields(ctx: Context, built: Built, content: dict, n: int, model: str
             "skill_gaps": report.info.get("honesty", {}).get("gaps"),
             "diff": diff.bullet_diff(ctx.base.structure, built.tailored), "engine": built.engine,
             "model": model, "headline": built.tailored.headline,
-            "mirror": mirror_summary(content, report) if ctx.prules.get("mirror_duties") else None}
+            "mirror": mirror_summary(content, report) if ctx.prules.get("mirror_duties") else None,
+            "tailor": tailor_summary(content, report)}
+
+
+def tailor_summary(content: dict, report) -> dict | None:
+    """What "Changes vs your base resume" shows: each spare swap (read from the page, with the answer's reason), the
+    skills added and removed per row, and the JD skills still missing. None when the rules are off."""
+    info = report.info.get("tailor") or {}
+    if not info:
+        return None
+    skills = info.get("skills") or {}
+    return {"swaps": (info.get("swaps") or {}).get("swaps") or [], "skills_added": skills.get("added") or {},
+            "skills_removed": skills.get("removed") or {}, "missing_jd": skills.get("missing_jd") or [],
+            "declared": {k: content.get(k) or [] for k in TAILOR_KEYS}}
 
 
 def mirror_summary(content: dict, report) -> dict | None:

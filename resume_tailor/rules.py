@@ -40,6 +40,24 @@ Stricter rules for one master resume (all off by default):
 
     [employer_domains]               # with mirror_duties: a JD domain noun goes on a role's bullet only if listed
     "Lumen Freight" = ["logistics", "freight", "supply chain"]
+
+Deeper tailoring (all off by default; the checks are tailorchecks.py):
+
+    summary_structure = { verb = "shipping", max_numbers = 2, min_employers = 2 }
+                                     # the summary is written fresh per job: sentence 1 opens "<title> with <years>
+                                     # <verb>", at most 2 numbers besides the years, at least 2 employers named
+    summary_industries = ["logistics", "healthcare", "retail"]   # the only words after "across" in sentence 1
+    skills_add_first = true          # with skill_rows_fixed: every JD skill the person has goes into its row first;
+                                     # a row loses a skill only by its [drop_order], never a locked one or one the JD
+                                     # names
+    locked_skills = ["Python", "PyTorch"]
+    spare_swaps = true               # a spare bullet (facts.md "## Part 3") may replace a non-anchor bullet of its
+                                     # own job, at most max_swaps per job
+    anchor_bullets = ["Lumen Freight forecasting"]   # "<employer> <a few words of the bullet>": never replaced
+    max_swaps = 2
+
+    [drop_order]                     # with skills_add_first: per row, first out first
+    "ML & Data" = ["scikit-learn", "pandas"]
 """
 import re
 import tomllib
@@ -65,12 +83,16 @@ DEFAULT_RULES = {"era_jobs": (), "headline_may_change": True, "headline_from_job
                  "short_bullets": None, "max_at_top": None, "bullet_plain": False, "max_from_to": None,
                  "jd_gaps": False, "fact_bank_numbers": False, "skill_rows_fixed": False, "hm_review": False,
                  "mirror_duties": False, "employer_domains": None,
+                 "summary_structure": None, "summary_industries": (), "skills_add_first": False, "locked_skills": (),
+                 "drop_order": None, "spare_swaps": False, "anchor_bullets": (), "max_swaps": None,
                  "summary_years": None, "headline": None, "summary_must_contain": (), "summary_start": None,
                  "verbs": None, "min_bullet_lines": 2, "jd_skills_allowed": False, "location": None,
                  "bullet_words": None, "bullet_words_target": None, "summary_words": None, "summary_sentences": None,
                  "banned_words": ()}
 RANGES = ("bullet_words", "bullet_words_target", "summary_words", "summary_sentences", "summary_keep")
-LISTS = ("era_jobs", "summary_must_contain", "banned_words", "headline_titles")
+LISTS = ("era_jobs", "summary_must_contain", "banned_words", "headline_titles", "summary_industries", "locked_skills",
+         "anchor_bullets")
+STRUCTURE_KEYS = {"verb": str, "max_numbers": int, "min_employers": int}
 # a bullet's last line under this share of the column is a widow; settings.json `widow_share` overrides it
 WIDOW_SHARE = 0.20
 
@@ -113,13 +135,30 @@ def parse(text: str) -> dict:
             if not (isinstance(value, list) and len(value) == 2 and all(isinstance(v, int) for v in value)):
                 raise RulesError("rules.toml: short_bullets must be [words, how many], for example [27, 4]")
             out[key] = tuple(value)
-        elif key in ("verbs", "employer_domains"):
+        elif key in ("verbs", "employer_domains", "drop_order"):
             if not (isinstance(value, dict) and all(isinstance(v, list) for v in value.values())):
+                if key == "drop_order":
+                    raise RulesError('rules.toml: [drop_order] maps a skills row to a list of skills, "ML" = ["..."]')
                 what = "verbs" if key == "verbs" else "domains"
                 raise RulesError(f'rules.toml: [{key}] maps a company to a list of {what}, "Acme" = ["..."]')
             out[key] = {str(k): tuple(str(x) for x in v) for k, v in value.items()}
+        elif key == "summary_structure":
+            if not (isinstance(value, dict) and set(value) <= set(STRUCTURE_KEYS)
+                    and all(isinstance(v, STRUCTURE_KEYS[k]) and not isinstance(v, bool) for k, v in value.items())):
+                raise RulesError('rules.toml: summary_structure takes verb (text), max_numbers and min_employers '
+                                 '(numbers), for example { verb = "shipping", max_numbers = 2, min_employers = 2 }')
+            out[key] = dict(value)
+        elif key == "max_swaps":
+            if not (isinstance(value, int) and not isinstance(value, bool) and value >= 0):
+                raise RulesError("rules.toml: max_swaps must be a whole number, for example 2")
+            out[key] = value
         else:
             out[key] = value
+    if out.get("summary_structure") and out.get("summary_keep"):
+        raise RulesError("rules.toml: summary_structure writes the summary fresh for each job, so it can't be used "
+                         "with summary_keep; remove one of them")
+    if out.get("skills_add_first") and not out.get("skill_rows_fixed"):
+        raise RulesError("rules.toml: skills_add_first works on fixed skill rows; add skill_rows_fixed = true")
     if out.get("headline"):
         out.setdefault("headline_may_change", False)
     if out.get("headline_from_job"):
