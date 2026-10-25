@@ -282,13 +282,64 @@
     const btns = (j.place_choices || []).map(c => pick(c, c, `Put ${c} on the resume and queue it`)).join('') + pick('remote', `Remote → ${j.home || 'own city'}`, `A remote job: your own city, ${j.home || ''}`);
     return `<li class="card job needs" data-job="${id}"><div><div class="title">${num(n)}${esc(j.company)} · ${esc(j.role)} ${chip(j)}</div><div class="meta">${esc(j.error || 'needs you: pick the location')}</div><div class="meta when">${esc(whenLine(j, day))}</div><div class="actions">${btns}<button data-act="placeother" data-id="${id}" class="ghost" title="Type the city (Enter saves)">Other…</button><button data-act="cancel" data-id="${id}" class="ghost">Cancel</button></div><form class="placeform" data-place="${id}" hidden><input name="place" placeholder="City, ST" autocomplete="off" aria-label="Other city, as City, ST" title="Type the city as City, ST (Enter saves)"></form></div></li>`;
   }
+  // the resume lists' search: company, title, date and status (any word order, case and punctuation ignored,
+  // "AI/ML" = "AI ML", a word of 5+ letters may be one edit off; a date as 10/23, Oct 23
+  // or 2026-10-23 matches the day it was queued, made or archived)
+  const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+  const normText = (s) => (String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().match(/[a-z0-9]+/g) || []).join(' ');
+  function edits(a, b, limit) {
+    if (Math.abs(a.length - b.length) > limit) return limit + 1;
+    let prev2 = null, prev = Array.from({ length: b.length + 1 }, (_, j) => j);
+    for (let i = 1; i <= a.length; i++) {
+      const cur = [i];
+      for (let j = 1; j <= b.length; j++) {
+        cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] !== b[j - 1]));
+        if (prev2 && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) cur[j] = Math.min(cur[j], prev2[j - 2] + 1);
+      }
+      [prev2, prev] = [prev, cur];
+    }
+    return prev[b.length];
+  }
+  const dayKey = (iso) => { const d = new Date(iso); return isNaN(d) ? null : [d.getFullYear(), d.getMonth() + 1, d.getDate()]; };
+  function queryDates(q) {
+    const out = [];
+    const rest = q.replace(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/g, (_, y, m, d) => { out.push([+y, +m, +d]); return ' '; })
+      .replace(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/g, (_, m, d, y) => { out.push([y ? (+y < 100 ? 2000 + +y : +y) : null, +m, +d]); return ' '; })
+      .replace(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})\b/gi, (_, mo, d) => { out.push([null, MONTHS.indexOf(mo.toLowerCase().slice(0, 3)) + 1, +d]); return ' '; });
+    return [out, rest];
+  }
+  function found(j, q) {
+    const [dates, rest] = queryDates(q);
+    const days = [j.created_at, j.finished_at, j.archived_at, j.requeued_at].map(dayKey).filter(Boolean);
+    if (!dates.every(([y, m, d]) => days.some(([yy, mm, dd]) => mm === m && dd === d && (y == null || yy === y)))) return false;
+    const ws = normText(rest).split(' ').filter(Boolean), tw = normText(`${j.company} ${j.role} ${LABELS[j.status] || j.status} ${j.status}`).split(' ').filter(Boolean);
+    const toks = tw.flatMap((w, k) => [w, w + (tw[k + 1] || ''), w + (tw[k + 1] || '') + (tw[k + 2] || '')]);
+    return ws.every(w => toks.some(t => t.startsWith(w)) || (w.length >= 5 && tw.some(t => edits(w, t, w.length >= 9 ? 2 : 1) <= (w.length >= 9 ? 2 : 1))));
+  }
+  state.q = new URLSearchParams(location.search).get('q') || '';
+  document.addEventListener('input', (e) => {
+    if (!e.target.matches('.rg-search')) return;
+    state.q = e.target.value.trim();
+    const url = new URL(location.href);
+    if (state.q) url.searchParams.set('q', state.q); else url.searchParams.delete('q');
+    history.replaceState(history.state, '', url.pathname + url.search + url.hash);
+    render();
+  });
+  function paintSearch(shown, total) {
+    document.querySelectorAll('.rg-search').forEach(i => { if (i !== document.activeElement) i.value = state.q; });
+    document.querySelectorAll('.rg-found').forEach(p => { p.textContent = state.q ? (shown ? `${shown} of ${total} match “${state.q}”` : `Nothing matches “${state.q}”. Searched company, title, date and status.`) : ''; });
+  }
   const typingNote = () => { const a = document.activeElement; return a && ['TEXTAREA', 'INPUT'].includes(a.tagName) && a.closest('form[data-fix], form[data-place]'); };
   function render() {
     if (typingNote()) { state.dirty = true; return; }          // never pull the note box out from under the cursor
     state.dirty = false;
     state.day = dayOf(Date.now());                            // Today / Yesterday labels move at midnight (tick below)
     const mine = (j) => j.profile === state.profile;          // only the chosen person, everywhere
-    const jobs = state.jobs.filter(mine), archived = state.archived.filter(mine);
+    const mineJobs = state.jobs.filter(mine), mineArchived = state.archived.filter(mine);
+    const all = mineJobs.length + mineArchived.length;
+    const hit = (j) => !state.q || found(j, state.q);
+    const jobs = mineJobs.filter(hit), archived = mineArchived.filter(hit);
+    paintSearch(jobs.length + archived.length, all);
     const queueRow = (j, n, day) => j.status === 'needs_you' ? needsCard(j, n, day) : j.status === 'needs_place' ? placeCard(j, n, day) : jobRow(j, n, day);
     const ended = jobs.filter(ENDED_EMPTY), live = jobs.filter(IN_QUEUE), ready = jobs.filter(j => j.status === 'ready');
     const endedBlock = ended.length ? `<details class="ended"><summary>Cancelled &amp; failed (${ended.length}) <button data-act="clear" class="ghost" title="Hide them from the Queue; files are kept">Clear cancelled &amp; failed</button></summary>${byDay(ended, jobRow)}</details>` : '';
@@ -298,14 +349,16 @@
     $('#ready').innerHTML = (approved ? `<div class="toolbar"><span class="muted">${toApprove} to approve · ${approved} approved</span><button data-act="archive-approved" title="Hide every approved resume from Ready (files and Drive copies stay)">Archive all approved (${approved})</button></div>` : '') + (ready.length ? byDay(ready, jobRow) : '<p class="muted">Nothing here.</p>');
     $('#archived').innerHTML = archived.length ? `<div class="toolbar"><button data-act="clear-archived" class="danger" title="Delete every archived resume of this person for good (asks first; Undo for 8 s); approved PDFs in Drive stay">Clear archived (${archived.length})</button></div>` + byDay(archived, archivedRow) : '<p class="muted">Nothing archived.</p>';
     // the Queue number counts what is being made or waiting its turn; needs-you is its own badge
-    const making = live.filter(j => ACTIVE.has(j.status)).length, needs = live.length - making;
+    const liveAll = mineJobs.filter(IN_QUEUE), readyAll = mineJobs.filter(j => j.status === 'ready');   // badges: every one, searched or not
+    const making = liveAll.filter(j => ACTIVE.has(j.status)).length, needs = liveAll.length - making;
+    const toApproveAll = readyAll.length - readyAll.filter(j => j.drive_link).length;
     $('#count-queue').textContent = making || '';
     $('#count-queue').title = `${making} being made or waiting`;
     $('#count-needs').textContent = needs ? `${needs} need${needs === 1 ? 's' : ''} you` : '';
     $('#count-needs').title = needs ? `${needs} resume${needs === 1 ? '' : 's'} waiting for you (Accept as it is, Fix with note, or pick the location)` : '';
-    $('#count-ready').textContent = toApprove || '';
-    $('#count-ready').title = `${toApprove} not approved yet · ${ready.length} in Ready`;   // the badge vs the day counts
-    $('#count-archived').textContent = archived.length || '';
+    $('#count-ready').textContent = toApproveAll || '';
+    $('#count-ready').title = `${toApproveAll} not approved yet · ${readyAll.length} in Ready`;   // the badge vs the day counts
+    $('#count-archived').textContent = mineArchived.length || '';
     const setupNote = state.setup && !state.setup.claude_ready && state.profiles.length
       ? '<div class="banner warn">Claude is not set up yet, so new resumes wait in the Queue. <a href="#settings" data-goto="settings">Open Settings</a> to add an API key or turn on demo mode.</div>' : '';
     $('#banners').innerHTML = setupNote + state.profiles.filter(p => p.pause && p.id === state.profile).map(p => `<div class="banner">${esc(p.name)}: paused until ${new Date(p.pause.until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} (${esc(p.pause.reason)})</div>`).join('');

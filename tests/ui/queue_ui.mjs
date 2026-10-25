@@ -124,6 +124,20 @@ try {
   const back = await js(`return (await (await fetch('/api/jobs/${ids.approved}')).json()).job`);
   check("Restored resume keeps its Drive link and status", back.status === "ready" && back.drive_link === "https://drive.example/1" && back.archived_at === null, JSON.stringify({ s: back.status, d: back.drive_link, a: back.archived_at }));
   check("the accepted one is still in Ready", await js(`return !!document.querySelector('#ready [data-job="${ids.needs_a}"]')`));
+  // 8. search: company, title, date or status; a typo one edit off still matches; the query is kept in the address
+  const search = (q) => js(`const i = document.querySelector('#tab-ready .rg-search'); i.value = ${JSON.stringify(q)}; i.dispatchEvent(new Event('input', { bubbles: true }))`);
+  const readyIds = `[...document.querySelectorAll('#ready li[data-job]')].map(li => +li.dataset.job).join(',')`;
+  await search("co aproved");
+  check("search finds by company, one typo off", await until(`${readyIds} === '${ids.approved}'`), await js(`return ${readyIds}`));
+  check("search says how many match and keeps the query in the address", (await js(`return document.querySelector('#tab-ready .rg-found').textContent`)).startsWith("1 of ") && (await js(`return new URLSearchParams(location.search).get('q')`)) === "co aproved");
+  check("the side badges count every resume, searched or not", (await js(`return document.querySelector('#count-archived').textContent`)) === "3");
+  const d = new Date();
+  await search(`${d.getMonth() + 1}/${d.getDate()} ready`);
+  check("search finds by date and status", await until(`${readyIds}.split(',').length === 2`), await js(`return ${readyIds}`));
+  await search("nothing like this");
+  check("no match says what was searched", await until(`document.querySelector('#ready li[data-job]') === null && /^Nothing matches/.test(document.querySelector('#tab-ready .rg-found').textContent)`));
+  await search("");
+  check("an empty search shows everything and leaves the address", await until(`${readyIds}.split(',').length === 2 && !new URLSearchParams(location.search).has('q')`));
   check("no page errors", errors.length === 0, errors.join(" | "));
 } catch (err) {
   check("driver ran", false, err.stack || err);

@@ -1,5 +1,6 @@
 """in a real browser: the Queue shows only live + needs-you work, a needs-you card has the page image,
-plain reasons, ATS, the diff, Looks good and Fix with note; Clear and Archive work (tests/ui/queue_ui.mjs)."""
+plain reasons, ATS, the diff, Looks good and Fix with note; Clear and Archive work; the lists search by company, title,
+date or status (tests/ui/queue_ui.mjs)."""
 import json
 import shutil
 import subprocess

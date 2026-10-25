@@ -37,6 +37,8 @@ coverage before and after, so I can tell quickly whether a resume is worth sendi
   later resumes too.
 - Approve saves the PDF to your Google Drive. "Open as Google Doc" lets you edit by hand, and "Get my Doc edits"
   brings the edits back and checks them again.
+- Search the Queue, Ready and Archived lists by company, title, date (10/23, Oct 23) or status; the search stays
+  in the address, so a link reopens it.
 - Another program, such as a job tracker, can queue resumes and read results over an [HTTP API](docs/API.md).
 
 ## Quickstart
