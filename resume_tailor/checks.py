@@ -805,7 +805,7 @@ def _bullet_shape_problems(tstruct: docxio.Structure, prules: dict) -> list:
             if bad:
                 out.append(Failure(7, "bullet_punct", f"bullet {k + 1} of role {j + 1} contains "
                                                       f"{' '.join(repr(c) for c in bad)}; bullets use no semicolons, "
-                                                      f"em/en dashes or parentheses (hyphen ranges like 7-10 are fine)"))
+                                                      f"em/en dashes or parentheses (hyphen ranges like 4-6 are fine)"))
     cap = prules.get("max_from_to")
     if cap is not None:
         hits = [(j, k) for j, k, b in bullets for _ in range(from_to_count(b))]

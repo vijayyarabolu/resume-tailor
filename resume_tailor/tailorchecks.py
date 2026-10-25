@@ -378,7 +378,7 @@ def _key(match) -> str:
 
 
 def number_keys(text: str) -> set:
-    """'82% to 96%' -> {'82%', '96%'}; '12 MCP tools' -> {'12 mcp'}; ranges like 7-10 and $5-7K are left out."""
+    """'70% to 88%' -> {'70%', '88%'}; '9 API tools' -> {'9 api'}; ranges like 4-6 and $2-4K are left out."""
     return {_key(m) for m in _RANGE_NUM.finditer(text or "")}
 
 

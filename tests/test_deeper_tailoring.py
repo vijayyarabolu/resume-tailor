@@ -356,8 +356,8 @@ class SpareSwaps(unittest.TestCase):
                             in f.message for f in fails), [f.message for f in fails])
 
     def test_number_keys(self):
-        self.assertEqual(tailorchecks.number_keys("lifted completed runs from 82% to 96%."), {"82%", "96%"})
-        self.assertEqual(tailorchecks.number_keys("clear 7-10 invoices daily, $5-7K"), set())
+        self.assertEqual(tailorchecks.number_keys("lifted completed runs from 70% to 88%."), {"70%", "88%"})
+        self.assertEqual(tailorchecks.number_keys("clear 4-6 orders daily, $2-4K"), set())
         self.assertEqual(tailorchecks.number_keys("the 12 GPU nodes"), {"12 gpu"})
 
 

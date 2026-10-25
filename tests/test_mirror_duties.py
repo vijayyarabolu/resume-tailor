@@ -54,10 +54,10 @@ class MirrorCheck(unittest.TestCase):
         self.assertEqual(info[0]["at"], [0, 1])
 
     def test_a_number_from_another_fact_fails(self):
-        text = SHIPPED.replace("dispatcher questions", "questions for 340 dispatchers") + " Owning models end to end."
+        text = SHIPPED.replace("dispatcher questions", "questions for 410 dispatchers") + " Owning models end to end."
         entry = {"responsibility": "own models end to end", "bullet_id": "1.2", "phrase_used": "Owning models end to end"}
         fails, _ = self._fails(text, entry)
-        self.assertTrue(fails and "340" in fails[0], fails)
+        self.assertTrue(fails and "410" in fails[0], fails)
         self.assertIn("mirrored", fails[0])
         self.assertIn("count this responsibility as not covered", fails[0])
 

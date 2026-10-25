@@ -75,7 +75,7 @@ These are for a single base resume you want kept close to how you wrote it. All 
 | `verbs_unique` | `true` | every bullet opens with its own verb, across the whole resume |
 | `short_bullets` | `[27, 4]` | at least 4 bullets have 27 words or fewer, so the lengths vary |
 | `max_at_top` | `5` | at most 5 bullets sit at exactly the top of `bullet_words` |
-| `bullet_plain` | `true` | no semicolons, em or en dashes, or parentheses inside a bullet (hyphen ranges like 7-10 are fine) |
+| `bullet_plain` | `true` | no semicolons, em or en dashes, or parentheses inside a bullet (hyphen ranges like 4-6 are fine) |
 | `max_from_to` | `4` | at most 4 "from X to Y" phrasings across all bullets |
 | `fact_bank_numbers` | `true` | numbers only from this base and the part of `facts.md` above a `## Part 2` heading; put interview-only details under Part 2 |
 | `jd_gaps` | `true` | job skills you don't have are listed as Gaps under the review (never added); "I've used it" starts a note that confirms one |

@@ -107,7 +107,7 @@ class BulletShape(unittest.TestCase):
         self.assertIn("at_top", names, "max_at_top: no more than 5 bullets at exactly 32 words")
 
     def test_semicolons_dashes_and_parentheses_fail_hyphen_ranges_pass(self):
-        ok = _words(22, "Built", "clear 7-10 invoices daily, up from 3-5 and $5-7K")
+        ok = _words(22, "Built", "clear 4-6 orders daily, up from 2-3 and $2-4K")
         for bad in (";", "—", "–", "(SQL)"):
             with self.subTest(bad=bad):
                 bullets = [_words(22, "Built", f"one {bad} two"), _words(23, "Designed"), _words(24, "Shipped"),
@@ -117,10 +117,10 @@ class BulletShape(unittest.TestCase):
         self.assertNotIn("bullet_punct", self._fails(bullets))
 
     def test_at_most_four_from_x_to_y(self):
-        ft = "cut p95 from 8 seconds to 260 ms"
+        ft = "cut p95 from 5 seconds to 300 ms"
         bullets = [_words(24, v, ft) for v in ("Built", "Designed", "Shipped", "Trained", "Wired")]
         self.assertIn("from_to", self._fails(bullets))
-        self.assertEqual(checks.from_to_count("Cut spend to $3K from $5-7K by caching repeated prompts and routing "
+        self.assertEqual(checks.from_to_count("Cut spend to $1K from $2-4K by caching repeated prompts and routing "
                                               "routine lookups to the 8B model"), 0, "a long gap is not the phrasing")
         self.assertNotIn("from_to", self._fails([_words(24, v, ft) for v in ("Built", "Designed", "Shipped",
                                                                               "Trained")] + [_words(22, "Wired")]))
@@ -135,13 +135,13 @@ class FactBankPart2(unittest.TestCase):
         with TempEnv():
             folder = profiles.folder(PID)
             facts = folder / "facts.md"
-            facts.write_text(facts.read_text() + "\n## Part 2\n- The dispatch team had 330 people.\n")
+            facts.write_text(facts.read_text() + "\n## Part 2\n- The dispatch team had 45 people.\n")
             profiles.reload()
             prof = profiles.load(PID)
             self.assertNotIn("## Part 2", prof.fact_bank_resume)
             self.assertIn("1,200 routes", prof.fact_bank_resume)
-            self.assertNotIn("330", checks._numbers(prof.fact_bank_resume), "an interview-only number")
-            self.assertIn("330", checks._numbers(prof.fact_bank))
+            self.assertNotIn("45", checks._numbers(prof.fact_bank_resume), "an interview-only number")
+            self.assertIn("45", checks._numbers(prof.fact_bank))
 
 
 class FactsAndGaps(unittest.TestCase):
@@ -153,17 +153,17 @@ class FactsAndGaps(unittest.TestCase):
                   "terms": [{"name": t, "need": True} for t in terms]}
         base = _struct("AI Engineer with 4 years.", [("Lumen", ["Built x."])])
         return types.SimpleNamespace(pid=PID, profile_rules=STRICT, role="AI Engineer", location="",
-                                     base_structure=base, known_skills=list(known), notes=(), all_base_texts=[bank, "330 communities"],
-                                     skill_text="330 communities", fact_bank=bank), scores
+                                     base_structure=base, known_skills=list(known), notes=(), all_base_texts=[bank, "45 stores"],
+                                     skill_text="45 stores", fact_bank=bank), scores
 
     def test_a_number_outside_part_one_fails_even_if_another_base_has_it(self):
         with TempEnv():
-            inp, scores = self._inp("AI Engineer with 4 years. Across 30+ communities, 98% kept.")
-            t = _struct("AI Engineer with 4 years.", [("Lumen", ["Kept 98% across 330 communities."])])
+            inp, scores = self._inp("AI Engineer with 4 years. Across 12+ stores, 92% kept.")
+            t = _struct("AI Engineer with 4 years.", [("Lumen", ["Kept 92% across 45 stores."])])
             fails, info = checks.check_honesty(inp, t, scores)
             self.assertIn("numbers", [f.name for f in fails])
-            self.assertTrue(any("330" in b for b in info["bad_numbers"]))
-            t2 = _struct("AI Engineer with 4 years.", [("Lumen", ["Kept 98% across 30+ communities."])])
+            self.assertTrue(any("45" in b for b in info["bad_numbers"]))
+            t2 = _struct("AI Engineer with 4 years.", [("Lumen", ["Kept 92% across 12+ stores."])])
             self.assertNotIn("numbers", [f.name for f in checks.check_honesty(inp, t2, scores)[0]])
 
     def test_jd_skills_the_person_lacks_are_gaps_and_never_added(self):
@@ -217,14 +217,14 @@ class SkillRowsAndSummary(unittest.TestCase):
                 "skills": [{"category": "LLMs & Agents", "items": ["a"]}, {"category": "Cloud & DevOps", "items": ["b"]}]}
         content = {"summary": "AI/ML Engineer with 4 years doing Y. First ML hire at Lumen, changed. Other.",
                    "skills": [{"category": "GenAI", "items": ["a"]}, {"category": "Cloud", "items": ["b"]}],
-                   "jobs": [{"company": "Lumen", "bullets": ["Cut 7–10 invoices."]}]}
+                   "jobs": [{"company": "Lumen", "bullets": ["Cut 4–6 orders."]}]}
         report = checks.Report([checks.Failure(7, "summary_keep", "x"), checks.Failure(2, "skill_rows", "x"),
                                 checks.Failure(7, "bullet_punct", "bullet 1 of role 1 contains '–'")])
         out = repair.restore_master(content, report, STRICT, base)
         self.assertEqual(out.content["summary"], "AI/ML Engineer with 4 years doing Y. First ML hire at Lumen, where A. "
                                                  "Built B at Brightline, and C at Northwind.")
         self.assertEqual([s["category"] for s in out.content["skills"]], ["LLMs & Agents", "Cloud & DevOps"])
-        self.assertEqual(out.content["jobs"][0]["bullets"][0], "Cut 7-10 invoices.")
+        self.assertEqual(out.content["jobs"][0]["bullets"][0], "Cut 4-6 orders.")
         self.assertEqual(content["skills"][0]["category"], "GenAI", "the input is never changed")
 
     def test_a_dropped_or_renamed_master_skill_fails_reorder_and_additions_pass(self):

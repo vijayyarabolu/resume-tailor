@@ -225,7 +225,7 @@ def build(profile, base, measure, jd_text: str, company: str, role: str, scores:
         "",
         "Writing (checked by machine):",
         f"- No banned words: spearheaded, leveraged, cutting-edge, seamless, robust, delve, utilize, synergy. "
-        + ("No semicolons, em dashes, en dashes or parentheses inside bullets (hyphen ranges like 7-10 are fine). "
+        + ("No semicolons, em dashes, en dashes or parentheses inside bullets (hyphen ranges like 4-6 are fine). "
            if prules.get("bullet_plain") else "No em dashes (—) anywhere in bullets; use en dashes (–) only for "
                                               "ranges. ") + period,
         *_shape_lines(prules),
@@ -394,7 +394,7 @@ def _shape_lines(prules: dict) -> list:
                       if prules.get("max_at_top") and prules.get("bullet_words") else "."))
     if prules.get("max_from_to") is not None:
         out.append(f"- At most {prules['max_from_to']} \"from X to Y\" phrasings in all bullets together; keep "
-                   f"the other number shapes (98%, halved, up from 50%, 2-3 a month from 6-7).")
+                   f"the other number shapes (92%, halved, up from 40%, 1-2 a month from 4-5).")
     return out
 
 
