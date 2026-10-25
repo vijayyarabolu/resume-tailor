@@ -14,9 +14,11 @@ const same = (a, b) => JSON.stringify([...a].sort((x, y) => x - y)) === JSON.str
 let ws;
 try {
   let targets;
-  for (let i = 0; i < 100 && !targets; i++) {
-    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); } catch { await sleep(150); }
+  for (let i = 0; i < 400 && !targets?.some((t) => t.type === "page"); i++) {   // a cold Chrome on CI can take 15 s+
+    try { targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json(); } catch { /* not up yet */ }
+    if (!targets?.some((t) => t.type === "page")) await sleep(150);
   }
+  if (!targets?.some((t) => t.type === "page")) throw new Error(`Chrome did not open its debug port ${port} within 60 s`);
   ws = new WebSocket(targets.find((t) => t.type === "page").webSocketDebuggerUrl);
   await new Promise((r) => ws.addEventListener("open", r));
   let seq = 0;
